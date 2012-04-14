@@ -1280,6 +1280,7 @@ void gserial_cleanup(void)
 {
 	unsigned	i;
 	struct gs_port	*port;
+	int ret;
 
 	if (!gs_tty_driver)
 		return;
@@ -1298,7 +1299,12 @@ void gserial_cleanup(void)
 		cancel_work_sync(&port->push);
 
 		/* wait for old opens to finish */
+#if 0
 		wait_event(port->close_wait, gs_closed(port));
+#else
+		ret = wait_event_timeout(port->close_wait, gs_closed(port),HZ/10);
+		pr_debug("%s timeout %d  <\n",__func__,ret);
+#endif
 
 		WARN_ON(port->port_usb != NULL);
 

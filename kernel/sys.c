@@ -364,9 +364,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	int ret = 0;
 
 	/* We only trust the superuser with rebooting the system. */
+#ifndef CONFIG_HUAWEI_FOTA_UPDATA  /* DM + FOTA Changes */
 	if (!capable(CAP_SYS_BOOT))
 		return -EPERM;
-
+#endif
 	/* For safety, we require "magic" arguments. */
 	if (magic1 != LINUX_REBOOT_MAGIC1 ||
 	    (magic2 != LINUX_REBOOT_MAGIC2 &&

@@ -21,11 +21,11 @@
 #include <linux/fs.h>
 #include <linux/android_pmem.h>
 #include <mach/msm_adsp.h>
+
 #include <mach/clk.h>
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include "msm_vfe7x.h"
-#include <linux/pm_qos_params.h>
 
 #define QDSP_CMDQUEUE 25
 
@@ -44,10 +44,9 @@
 #define MSG_STATS_WE  9
 
 #define VFE_ADSP_EVENT 0xFFFF
-#define SNAPSHOT_MASK_MODE 0x00000002
-#define MSM_AXI_QOS_PREVIEW		192000
-#define MSM_AXI_QOS_SNAPSHOT	192000
 
+#define SNAPSHOT_MASK_MODE 0x00000002
+#define MSM_AXI_QOS_PREVIEW	MSM_AXI_MAX_FREQ
 
 static struct msm_adsp_module *qcam_mod;
 static struct msm_adsp_module *vfe_mod;
@@ -66,12 +65,11 @@ static void vfe_7x_convert(struct msm_vfe_phy_info *pinfo,
 		void *data, void **ext, int32_t *elen)
 {
 	switch (type) {
-	case VFE_MSG_OUTPUT_P: {
+	case VFE_MSG_OUTPUT1:
+	case VFE_MSG_OUTPUT2: {
 		pinfo->y_phy = ((struct vfe_endframe *)data)->y_address;
 		pinfo->cbcr_phy =
 			((struct vfe_endframe *)data)->cbcr_address;
-
-		pinfo->output_id = OUTPUT_TYPE_P;
 
 		CDBG("vfe_7x_convert, y_phy = 0x%x, cbcr_phy = 0x%x\n",
 				 pinfo->y_phy, pinfo->cbcr_phy);
@@ -109,14 +107,12 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 	uint32_t evt_buf[3];
 	struct msm_vfe_resp *rp;
 	void *data;
-	CDBG("%s:id=%d\n", __func__, id);
 
 	len = (id == VFE_ADSP_EVENT) ? 0 : len;
-	data = resp->vfe_alloc(sizeof(struct msm_vfe_resp) + len,
-		vfe_syncdata,  GFP_ATOMIC);
+	data = resp->vfe_alloc(sizeof(struct msm_vfe_resp) + len, vfe_syncdata);
 
 	if (!data) {
-		pr_err("%s: rp: cannot allocate buffer\n", __func__);
+		pr_err("rp: cannot allocate buffer\n");
 		return;
 	}
 	rp = (struct msm_vfe_resp *)data;
@@ -128,29 +124,33 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 		rp->evt_msg.type   = MSM_CAMERA_EVT;
 		getevent(evt_buf, sizeof(evt_buf));
 		rp->evt_msg.msg_id = evt_buf[0];
-	CDBG("%s:event:msg_id=%d\n", __func__, rp->evt_msg.msg_id);
-		resp->vfe_resp(rp, MSM_CAM_Q_VFE_EVT, vfe_syncdata,
-		GFP_ATOMIC);
+		resp->vfe_resp(rp, MSM_CAM_Q_VFE_EVT, vfe_syncdata);
 	} else {
 		/* messages */
 		rp->evt_msg.type   = MSM_CAMERA_MSG;
 		rp->evt_msg.msg_id = id;
 		rp->evt_msg.data = rp + 1;
 		getevent(rp->evt_msg.data, len);
-	CDBG("%s:messages:msg_id=%d\n", __func__, rp->evt_msg.msg_id);
 
 		switch (rp->evt_msg.msg_id) {
 		case MSG_SNAPSHOT:
-			update_axi_qos(MSM_AXI_QOS_PREVIEW);
+			/*EBI1 has been max 160MHz, so we need not update axi.*/
+			//update_axi_qos(MSM_AXI_QOS_PREVIEW);
 			rp->type = VFE_MSG_SNAPSHOT;
 			break;
 
 		case MSG_OUTPUT1:
-		case MSG_OUTPUT2:
-			rp->type = VFE_MSG_OUTPUT_P;
-			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT_P,
+			rp->type = VFE_MSG_OUTPUT1;
+			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT1,
 				rp->evt_msg.data, &(rp->extdata),
 				&(rp->extlen));
+			break;
+
+		case MSG_OUTPUT2:
+			rp->type = VFE_MSG_OUTPUT2;
+			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT2,
+					rp->evt_msg.data, &(rp->extdata),
+					&(rp->extlen));
 			break;
 
 		case MSG_STATS_AF:
@@ -178,7 +178,7 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 			rp->type = VFE_MSG_GENERAL;
 			break;
 		}
-		resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, vfe_syncdata, GFP_ATOMIC);
+		resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, vfe_syncdata);
 	}
 }
 
@@ -253,8 +253,8 @@ static void vfe_7x_release(struct platform_device *pdev)
 	kfree(extdata);
 	extlen = 0;
 
-	/* set back the AXI frequency to default */
-	update_axi_qos(PM_QOS_DEFAULT_VALUE);
+	/* release AXI frequency request */
+	release_axi_qos();
 }
 
 static int vfe_7x_init(struct msm_vfe_callback *presp,
@@ -275,12 +275,16 @@ static int vfe_7x_init(struct msm_vfe_callback *presp,
 	rc = msm_camio_enable(dev);
 	if (rc < 0)
 		return rc;
+
+	/* Set required axi bus frequency */
+	rc = request_axi_qos(MSM_AXI_QOS_PREVIEW);
+	if (rc < 0)
+		return rc;
+
 	msm_camio_camif_pad_reg_reset();
 
-	extlen = sizeof(struct vfe_frame_extra);
-
 	extdata =
-		kmalloc(extlen, GFP_ATOMIC);
+		kmalloc(sizeof(struct vfe_frame_extra), GFP_ATOMIC);
 	if (!extdata) {
 		rc = -ENOMEM;
 		goto init_fail;
@@ -305,7 +309,6 @@ get_vfe_fail:
 get_qcam_fail:
 	kfree(extdata);
 init_fail:
-	extlen = 0;
 	return rc;
 }
 
@@ -323,14 +326,13 @@ static int vfe_7x_config_axi(int mode,
 
 		CDBG("bufnum1 = %d\n", ad->bufnum1);
 		CDBG("config_axi1: O1, phy = 0x%lx, y_off = %d, cbcr_off =%d\n",
-			regptr->paddr, regptr->info.y_off,
-			regptr->info.cbcr_off);
+			regptr->paddr, regptr->y_off, regptr->cbcr_off);
 
 		bptr = &ao->output1buffer1_y_phy;
 		for (cnt = 0; cnt < ad->bufnum1; cnt++) {
-			*bptr = regptr->paddr + regptr->info.y_off;
+			*bptr = regptr->paddr + regptr->y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->info.cbcr_off;
+			*bptr = regptr->paddr + regptr->cbcr_off;
 
 			bptr++;
 			regptr++;
@@ -338,9 +340,9 @@ static int vfe_7x_config_axi(int mode,
 
 		regptr--;
 		for (cnt = 0; cnt < (8 - ad->bufnum1); cnt++) {
-			*bptr = regptr->paddr + regptr->info.y_off;
+			*bptr = regptr->paddr + regptr->y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->info.cbcr_off;
+			*bptr = regptr->paddr + regptr->cbcr_off;
 			bptr++;
 		}
 	} /* if OUTPUT1 or Both */
@@ -350,13 +352,13 @@ static int vfe_7x_config_axi(int mode,
 
 		CDBG("bufnum2 = %d\n", ad->bufnum2);
 		CDBG("config_axi2: O2, phy = 0x%lx, y_off = %d, cbcr_off =%d\n",
-		     regptr->paddr, regptr->info.y_off, regptr->info.cbcr_off);
+			regptr->paddr, regptr->y_off, regptr->cbcr_off);
 
 		bptr = &ao->output2buffer1_y_phy;
 		for (cnt = 0; cnt < ad->bufnum2; cnt++) {
-			*bptr = regptr->paddr + regptr->info.y_off;
+			*bptr = regptr->paddr + regptr->y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->info.cbcr_off;
+			*bptr = regptr->paddr + regptr->cbcr_off;
 
 			bptr++;
 			regptr++;
@@ -364,9 +366,9 @@ static int vfe_7x_config_axi(int mode,
 
 		regptr--;
 		for (cnt = 0; cnt < (8 - ad->bufnum2); cnt++) {
-			*bptr = regptr->paddr + regptr->info.y_off;
+			*bptr = regptr->paddr + regptr->y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->info.cbcr_off;
+			*bptr = regptr->paddr + regptr->cbcr_off;
 			bptr++;
 		}
 	}
@@ -381,8 +383,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 	struct vfe_stats_ack sack;
 	struct axidata *axid;
-	uint32_t i, op_mode;
-	uint32_t *_mode;
+	uint32_t i = 0;
 
 	struct vfe_stats_we_cfg *scfg = NULL;
 	struct vfe_stats_af_cfg *sfcfg = NULL;
@@ -491,7 +492,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 			axid->bufnum1, sfcfg->af_enable);
 
 		if (axid->bufnum1 > 0) {
-			regptr = &axid->region[0];
+			regptr = axid->region;
 
 			for (i = 0; i < axid->bufnum1; i++) {
 
@@ -576,7 +577,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 	case CMD_GENERAL:
 	case CMD_STATS_DISABLE: {
-		if (vfecmd->length > 256) {
+		if (vfecmd->length > sizeof(buf)) {
 			cmd_data_alloc =
 			cmd_data = kmalloc(vfecmd->length, GFP_ATOMIC);
 			if (!cmd_data) {
@@ -602,23 +603,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 				break;
 
 			case VFE_START_CMD:
-				_mode = (uint32_t *)cmd_data;
-				op_mode = *(++_mode);
-				if (op_mode & SNAPSHOT_MASK_MODE) {
-					/* request AXI bus for snapshot */
-					if (update_axi_qos(MSM_AXI_QOS_SNAPSHOT)
-						< 0) {
-						rc = -EFAULT;
-						goto config_failure;
-					}
-				} else {
-					/* request AXI bus for snapshot */
-					if (update_axi_qos(MSM_AXI_QOS_PREVIEW)
-						< 0) {
-						rc = -EFAULT;
-						goto config_failure;
-					}
-				}
+				/*Dont request AXI bus for snapshot, because max is 160MHz for MSM7x25*/
 				msm_camio_camif_pad_reg_reset_2();
 				vfestopped = 0;
 				break;
@@ -633,7 +618,33 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		} /* QDSP_CMDQUEUE */
 	}
 		break;
-	case CMD_AXI_CFG_PREVIEW:
+
+	case CMD_AXI_CFG_OUT1: {
+		axid = data;
+		if (!axid) {
+			rc = -EFAULT;
+			goto config_failure;
+		}
+
+		axio = kmalloc(sizeof(struct axiout), GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			goto config_failure;
+		}
+
+		if (copy_from_user(axio, (void *)(vfecmd->value),
+					sizeof(struct axiout))) {
+			rc = -EFAULT;
+			goto config_done;
+		}
+
+		vfe_7x_config_axi(OUTPUT_1, axid, axio);
+
+		cmd_data = axio;
+	}
+		break;
+
+	case CMD_AXI_CFG_OUT2:
 	case CMD_RAW_PICT_AXI_CFG: {
 		axid = data;
 		if (!axid) {
@@ -658,7 +669,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	}
 		break;
 
-	case CMD_AXI_CFG_SNAP: {
+	case CMD_AXI_CFG_SNAP_O1_AND_O2: {
 		axid = data;
 		if (!axid) {
 			rc = -EFAULT;

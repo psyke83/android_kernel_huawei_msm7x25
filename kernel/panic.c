@@ -203,6 +203,9 @@ const char *print_tainted(void)
 
 	return buf;
 }
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
+EXPORT_SYMBOL(print_tainted); 
+#endif
 
 int test_taint(unsigned flag)
 {

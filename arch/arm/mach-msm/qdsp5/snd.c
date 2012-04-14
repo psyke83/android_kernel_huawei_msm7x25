@@ -195,7 +195,12 @@ static long snd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		vmsg.args.device = cpu_to_be32(vol.device);
 		vmsg.args.method = cpu_to_be32(vol.method);
+#ifdef CONFIG_HUAWEI_KERNEL
+		if (vol.method != SND_METHOD_VOICE&&vol.method != SND_METHOD_MIDI) {
+#else
 		if (vol.method != SND_METHOD_VOICE) {
+#endif
+
 			MM_ERR("set volume: invalid method\n");
 			rc = -EINVAL;
 			break;

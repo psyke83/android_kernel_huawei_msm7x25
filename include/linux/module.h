@@ -537,6 +537,9 @@ int unregister_module_notifier(struct notifier_block * nb);
 
 extern void print_modules(void);
 
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
+extern int sprintf_modules(void *buf); 
+#endif
 extern void module_update_tracepoints(void);
 extern int module_get_iter_tracepoints(struct tracepoint_iter *iter);
 
@@ -651,6 +654,12 @@ static inline void print_modules(void)
 {
 }
 
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
+static int sprintf_modules(void *buf)
+{
+	return 0; 
+}
+#endif
 static inline void module_update_tracepoints(void)
 {
 }

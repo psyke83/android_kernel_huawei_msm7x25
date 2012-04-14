@@ -63,7 +63,11 @@ struct reg_struct const mt9t013_reg_pat[2] = {
 	1541,
 
 	/* read_mode     REG=0x3040 */
+#ifndef CONFIG_HUAWEI_CAMERA    
 	0x046C,
+#else
+	0x046F,
+#endif
 
 	/* x_output_size REG=0x034C */
 	1024,
@@ -126,7 +130,11 @@ struct reg_struct const mt9t013_reg_pat[2] = {
 	1551,
 
 	/* read_mode     REG=0x3040 */
+#ifndef CONFIG_HUAWEI_CAMERA    
 	0x0024,
+#else
+	0x0027,
+#endif
 
 	/* x_output_size REG=0x034C */
 	2064,

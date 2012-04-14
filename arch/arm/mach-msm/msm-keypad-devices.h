@@ -18,5 +18,18 @@
 extern struct platform_device keypad_device_7k_ffa;
 extern struct platform_device keypad_device_8k_ffa;
 extern struct platform_device keypad_device_surf;
-
+extern struct platform_device keypad_device_u7610;
+extern struct platform_device keypad_device_u8100;
+/*add code to support JUNI(U8300) */
+extern struct platform_device keypad_device_u8300;
+/*add code to support BOULDER(U8350) */
+extern struct platform_device keypad_device_u8350;
+/*U8150_EU and U8150_JP*/
+extern struct platform_device keypad_device_u8150;
+extern struct platform_device keypad_device_c8600;
+/*add code to support JOY(U8120) */
+extern struct platform_device keypad_device_u8120;
+extern struct platform_device keypad_device_u8500;
+extern struct platform_device keypad_device_u8160;
+extern struct platform_device keypad_device_u8130;
 #endif

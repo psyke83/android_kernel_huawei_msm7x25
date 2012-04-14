@@ -933,8 +933,6 @@ static long kgsl_ioctl_drawctxt_create(struct kgsl_file_private *private,
 			goto done;
 		}
 
-		/* if KGSL_CONTEXT_MAX is more than 16,
-		then linked list should be used for them */
 		private->g12_ctxt_id_mask |= 1 << param.drawctxt_id;
 	} else {
 		result = -EINVAL;

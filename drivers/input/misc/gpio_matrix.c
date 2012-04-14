@@ -25,15 +25,26 @@ struct gpio_kp {
 	struct gpio_event_input_devs *input_devs;
 	struct gpio_event_matrix_info *keypad_info;
 	struct hrtimer timer;
+       struct hrtimer back_key_timer;
+       int timeout_flag;
+       #ifdef CONFIG_HUAWEI_BACK_KEY_MULTI
+       int back_pressed;
+       #endif
+
 	struct wake_lock wake_lock;
 	int current_output;
 	unsigned int use_irq:1;
 	unsigned int key_state_changed:1;
 	unsigned int last_key_state_changed:1;
 	unsigned int some_keys_pressed:2;
+	unsigned int disabled_irq:1;
 	unsigned long keys_pressed[0];
 };
-
+#define KEY_BACKLIGHT 250  /* define a new backlight key's keycode  */
+#define KTIME_SECS 0  /* define back_key_timer's seconds */
+#define KTIME_NSECS 500000000  /* define back_key_timer's nseconds  */
+#define TRUE 1
+#define FALSE 0
 static void clear_phantom_key(struct gpio_kp *kp, int out, int in)
 {
 	struct gpio_event_matrix_info *mi = kp->keypad_info;
@@ -124,11 +135,62 @@ static void report_key(struct gpio_kp *kp, int key_index, int out, int in)
 					"changed to %d\n", keycode,
 					out, in, mi->output_gpios[out],
 					mi->input_gpios[in], pressed);
+                       #ifndef CONFIG_HUAWEI_BACK_KEY_MULTI
+                       if (keycode == KEY_BACKLIGHT)
+                      #else
+                      if (keycode == KEY_BACK)
+                      #endif
+
+                      {
+                           if(pressed)
+                           {
+                                #ifdef CONFIG_HUAWEI_BACK_KEY_MULTI
+                                kp->back_pressed = TRUE;
+                                #endif
+                                kp->timeout_flag = FALSE;
+                                hrtimer_start(&kp->back_key_timer, ktime_set(KTIME_SECS, KTIME_NSECS), HRTIMER_MODE_REL);
+                            }
+                            else
+                            {
+                                 hrtimer_cancel(&kp->back_key_timer);
+                                 if (kp->timeout_flag == FALSE)
+                                 {
+                                     input_report_key(kp->input_devs->dev[dev], KEY_BACK, 1); /* KEY_BACK 158 */  
+                                     input_report_key(kp->input_devs->dev[dev], KEY_BACK, 0); /* KEY_BACK 158 */  
+                                  }
+
+                            }
+                        #ifdef CONFIG_HUAWEI_BACK_KEY_MULTI
+                        return;
+                        #endif
+                        }
 			input_report_key(kp->input_devs->dev[dev], keycode, pressed);
+#ifdef CONFIG_HUAWEI_BACK_KEY_MULTI
 		}
 	}
-}
+    else if(kp->back_pressed && keycode == KEY_BACK && !pressed)
+    {
+        kp->back_pressed = FALSE;
+         hrtimer_cancel(&kp->back_key_timer);
+         if (kp->timeout_flag == FALSE)
+         {
+             input_report_key(kp->input_devs->dev[dev], KEY_BACK, 1); /* KEY_BACK 158 */  
+             input_report_key(kp->input_devs->dev[dev], KEY_BACK, 0); /* KEY_BACK 158 */  
+#endif
 
+          }
+    }
+}
+enum hrtimer_restart back_key_timer_func(struct hrtimer *timer)
+{
+    struct gpio_kp *kp = container_of(timer, struct gpio_kp, back_key_timer);   
+    kp->timeout_flag = TRUE;
+    //input_report_key(kp->input_dev, KEY_HOME, 1); /* KEY_HOME 102 */ 
+    //input_report_key(kp->input_dev, KEY_HOME, 0); /* KEY_HOME 102 */  
+    input_report_key(kp->input_devs->dev[0], KEY_HOME, 1);
+	input_report_key(kp->input_devs->dev[0], KEY_HOME, 0);
+    return HRTIMER_NORESTART;
+}
 static enum hrtimer_restart gpio_keypad_timer_func(struct hrtimer *timer)
 {
 	int out, in;
@@ -216,8 +278,12 @@ static irqreturn_t gpio_keypad_irq_handler(int irq_in, void *dev_id)
 	struct gpio_event_matrix_info *mi = kp->keypad_info;
 	unsigned gpio_keypad_flags = mi->flags;
 
-	if (!kp->use_irq) /* ignore interrupt while registering the handler */
+	if (!kp->use_irq) {
+		/* ignore interrupt while registering the handler */
+		kp->disabled_irq = 1;
+		disable_irq_nosync(irq_in);
 		return IRQ_HANDLED;
+	}
 
 	for (i = 0; i < mi->ninputs; i++)
 		disable_irq_nosync(gpio_to_irq(mi->input_gpios[i]));
@@ -273,6 +339,10 @@ static int gpio_keypad_request_irqs(struct gpio_kp *kp)
 				"irq %d\n", mi->input_gpios[i], irq);
 		}
 		disable_irq(irq);
+		if (kp->disabled_irq) {
+			kp->disabled_irq = 0;
+			enable_irq(irq);
+		}
 	}
 	return 0;
 
@@ -334,7 +404,8 @@ int gpio_event_matrix_func(struct gpio_event_input_devs *input_devs,
 				input_set_capability(input_devs->dev[dev],
 							EV_KEY, keycode);
 		}
-
+              set_bit(KEY_BACK & KEY_MAX, input_devs->dev[0]->keybit);
+              set_bit(KEY_HOME & KEY_MAX, input_devs->dev[0]->keybit);
 		for (i = 0; i < mi->noutputs; i++) {
 			if (gpio_cansleep(mi->output_gpios[i])) {
 				pr_err("gpiomatrix: unsupported output gpio %d,"
@@ -352,7 +423,11 @@ int gpio_event_matrix_func(struct gpio_event_input_devs *input_devs,
 				err = gpio_direction_output(mi->output_gpios[i],
 					!(mi->flags & GPIOKPF_ACTIVE_HIGH));
 			else
+			{
+				unsigned gpio_config = GPIO_CFG(mi->output_gpios[i], 0, GPIO_INPUT, GPIO_PULL_UP, GPIO_2MA);
+				gpio_tlmm_config(gpio_config, GPIO_ENABLE);
 				err = gpio_direction_input(mi->output_gpios[i]);
+			}
 			if (err) {
 				pr_err("gpiomatrix: gpio_configure failed for "
 					"output %d\n", mi->output_gpios[i]);
@@ -377,7 +452,12 @@ int gpio_event_matrix_func(struct gpio_event_input_devs *input_devs,
 		kp->key_state_changed = 1;
 
 		hrtimer_init(&kp->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+        #ifdef CONFIG_HUAWEI_BACK_KEY_MULTI
+        kp->back_pressed = FALSE;
+        #endif
 		kp->timer.function = gpio_keypad_timer_func;
+              hrtimer_init(&kp->back_key_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+              kp->back_key_timer.function = back_key_timer_func;
 		wake_lock_init(&kp->wake_lock, WAKE_LOCK_SUSPEND, "gpio_kp");
 		err = gpio_keypad_request_irqs(kp);
 		kp->use_irq = err == 0;

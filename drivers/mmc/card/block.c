@@ -388,7 +388,6 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		} else if (disable_multi == 1) {
 			disable_multi = 0;
 		}
-
 		if (brq.cmd.error) {
 			printk(KERN_ERR "%s: error %d sending read/write "
 			       "command, response %#x, card status %#x\n",
@@ -494,7 +493,6 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		ret = __blk_end_request(req, 0, brq.data.bytes_xfered);
 		spin_unlock_irq(&md->lock);
 	}
-
 	mmc_release_host(card->host);
 
 	spin_lock_irq(&md->lock);

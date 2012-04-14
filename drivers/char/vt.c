@@ -104,7 +104,9 @@
 #include <linux/io.h>
 #include <asm/system.h>
 #include <linux/uaccess.h>
-
+#ifdef CONFIG_HUAWEI_KERNEL
+extern int from_msm_fb_register(void);
+#endif
 #define MAX_NR_CON_DRIVER 16
 
 #define CON_DRIVER_FLAG_MODULE 1
@@ -3046,7 +3048,11 @@ static int bind_con_driver(const struct consw *csw, int first, int last,
 
 		if (k >= 0) {
 			vc = vc_cons[k].d;
-			update_screen(vc);
+/* Call from msm_fb_register() ,don't update LCD*/
+#ifdef CONFIG_HUAWEI_KERNEL
+            if(!from_msm_fb_register())
+#endif
+            	update_screen(vc);            
 		}
 	} else
 		printk("to %s\n", desc);

@@ -171,6 +171,10 @@ static int diagchar_close(struct inode *inode, struct file *file)
 			if (driver) {
 				mutex_lock(&driver->diagchar_mutex);
 				driver->ref_count--;
+				/*when close this dev we should del drain_timer also*/
+			#ifdef CONFIG_HUAWEI_KERNEL
+				del_timer(&drain_timer);
+			#endif
 				diagmem_exit(driver);
 				for (i = 0; i < driver->num_clients; i++)
 					if (driver->client_map[i] ==

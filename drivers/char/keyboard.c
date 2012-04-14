@@ -96,7 +96,12 @@ EXPORT_SYMBOL_GPL(k_handler);
 
 typedef void (fn_handler_fn)(struct vc_data *vc);
 static fn_handler_fn FN_HANDLERS;
+#ifndef CONFIG_HUAWEI_KERNEL
 static fn_handler_fn *fn_handler[] = { FN_HANDLERS };
+#else
+/*config huawei delete fn_handler funtion*/
+static fn_handler_fn *fn_handler[] = { NULL };
+#endif
 
 /*
  * Variables exported for vt_ioctl.c

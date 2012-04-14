@@ -688,14 +688,36 @@ static void msm_pm_restart(char str, const char *cmd)
 	for (;;) ;
 }
 
+
+#define MODEM_RECOVERY_MASK 0x2
+#define APP_BOOT_ITEM      60004 
+#define APP_RECOVERY_MASK 0x1
+
 static int msm_reboot_call(struct notifier_block *this, unsigned long code, void *_cmd)
 {
+	int rval;
+	// Set APP_BOOT_ITEM to Recovery Value.
+	unsigned app_mode = (MODEM_RECOVERY_MASK | APP_RECOVERY_MASK);
+	unsigned nv_app_item = APP_BOOT_ITEM;
+
 	if((code == SYS_RESTART) && _cmd) {
 		char *cmd = _cmd;
 		if (!strcmp(cmd, "bootloader")) {
 			restart_reason = 0x77665500;
 		} else if (!strcmp(cmd, "recovery")) {
 			restart_reason = 0x77665502;
+#ifdef CONFIG_HUAWEI_FACTORY_RECOVERY
+			
+			rval = msm_proc_comm(PCOM_NV_WRITE, &nv_app_item, &app_mode) ; 
+			if (rval == 0)
+			{
+			    printk(KERN_WARNING"Write app_boot_mode NV Succ..\n");
+			}
+			else
+			{
+				printk(KERN_WARNING"Write app_boot_mode NV Failed..\n");
+			}
+#endif
 		} else if (!strcmp(cmd, "eraseflash")) {
 			restart_reason = 0x776655EF;
 		} else if (!strncmp(cmd, "oem-", 4)) {

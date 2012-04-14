@@ -52,7 +52,7 @@ static unsigned int keypad_col_gpios_8k_ffa[] = {38, 39, 40, 41, 42};
 #define KEYMAP_INDEX(row, col) ((row)*ARRAY_SIZE(keypad_col_gpios) + (col))
 #define FFA_8K_KEYMAP_INDEX(row, col) ((row)* \
 				ARRAY_SIZE(keypad_col_gpios_8k_ffa) + (col))
-
+#if 0
 static const unsigned short keypad_keymap_surf[ARRAY_SIZE(keypad_col_gpios) *
 					  ARRAY_SIZE(keypad_row_gpios)] = {
 	[KEYMAP_INDEX(0, 0)] = KEY_5,
@@ -99,7 +99,42 @@ static const unsigned short keypad_keymap_surf[ARRAY_SIZE(keypad_col_gpios) *
 	[KEYMAP_INDEX(6, 4)] = KEY_F1
 #endif
 };
+#else
+static const unsigned short keypad_keymap_surf[ARRAY_SIZE(keypad_col_gpios) *
+					  ARRAY_SIZE(keypad_row_gpios)] = {
 
+    [KEYMAP_INDEX(4, 0)] = KEY_UP,           /* key up */
+    [KEYMAP_INDEX(3, 0)] = KEY_DOWN,          /* key down */
+	[KEYMAP_INDEX(2, 0)] = KEY_LEFT,
+    [KEYMAP_INDEX(1, 0)] = KEY_RIGHT,
+    [KEYMAP_INDEX(0, 0)] = 232,               /* KEY_CENTER */
+    
+    [KEYMAP_INDEX(4, 1)] = 229,           /* soft 1 */
+    [KEYMAP_INDEX(1, 1)] = 230,           /* soft 2 */
+    [KEYMAP_INDEX(3, 1)] = KEY_HOME, 
+	[KEYMAP_INDEX(2, 1)] = KEY_SEND,
+    [KEYMAP_INDEX(0, 1)] = KEY_BACK,
+
+    [KEYMAP_INDEX(4, 2)] = KEY_CLEAR,
+    [KEYMAP_INDEX(3, 2)] = KEY_0,
+    [KEYMAP_INDEX(2, 2)] = KEY_1,
+    [KEYMAP_INDEX(1, 2)] = KEY_2,
+    [KEYMAP_INDEX(0, 2)] = KEY_3,
+
+    [KEYMAP_INDEX(4, 3)] = KEY_4,
+    [KEYMAP_INDEX(3, 3)] = KEY_5,
+    [KEYMAP_INDEX(2, 3)] = KEY_6,
+    [KEYMAP_INDEX(1, 3)] = KEY_7,
+    [KEYMAP_INDEX(0, 3)] = KEY_8,
+
+    [KEYMAP_INDEX(4, 4)] = KEY_9,
+    [KEYMAP_INDEX(3, 4)] = 228,   /* KEY_SHARP */
+    [KEYMAP_INDEX(2, 4)] = 227,   /* KEY_STAR */
+    [KEYMAP_INDEX(1, 4)] = KEY_VOLUMEUP,   
+    [KEYMAP_INDEX(0, 4)] = KEY_VOLUMEDOWN, 
+
+};
+#endif
 static const unsigned short keypad_keymap_ffa[ARRAY_SIZE(keypad_col_gpios) *
 					      ARRAY_SIZE(keypad_row_gpios)] = {
 	/*[KEYMAP_INDEX(0, 0)] = ,*/

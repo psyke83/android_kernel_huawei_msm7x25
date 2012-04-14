@@ -223,6 +223,12 @@ config LEDS_DA903X
 	  This option enables support for on-chip LED drivers found
 	  on Dialog Semiconductor DA9030/DA9034 PMICs.
 
+config LEDS_HUAWEI_KEY
+	tristate "LED Support for Qualcomm PMIC connected LEDs"
+# 20090805 cKF14088 chengyingkai modify depends 
+# depends on changed from HUAWEI_FEATURE_U8220BSP to HUAWEI_APPS 
+	depends on LEDS_CLASS && HUAWEI_APPS
+	default y
 config LEDS_DAC124S085
 	tristate "LED Support for DAC124S085 SPI DAC"
 	depends on LEDS_CLASS && SPI

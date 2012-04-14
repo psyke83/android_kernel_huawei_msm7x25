@@ -270,6 +270,18 @@ config MOUSE_VSXXXAA
 	  described in the source file). This driver also works with the
 	  digitizer (VSXXX-AB) DEC produced.
 
+
+config MOUSE_OFN_AVAGO_A320
+	tristate "Avago A320 Optical finger navigation"
+	depends on I2C_MSM
+	depends on HUAWEI_KERNEL
+	default n
+	help
+	  Say Y here if you have an Avago A320 OFN device attached.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ofn_atlab.
+
 config MOUSE_GPIO
 	tristate "GPIO mouse"
 	depends on GENERIC_GPIO

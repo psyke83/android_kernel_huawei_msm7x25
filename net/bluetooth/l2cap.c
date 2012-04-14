@@ -249,6 +249,9 @@ static void l2cap_chan_del(struct sock *sk, int err)
 	BT_DBG("sk %p, conn %p, err %d", sk, conn, err);
 
 	if (conn) {
+		if (sock_owned_by_user(sk)){
+			printk("L2CAP ERROR: unlink owned sk!\n");
+		}
 		/* Unlink from channel list */
 		l2cap_chan_unlink(&conn->chan_list, sk);
 		l2cap_pi(sk)->conn = NULL;
@@ -464,7 +467,13 @@ static void l2cap_conn_start(struct l2cap_conn *conn)
 					struct sock *parent = bt_sk(sk)->parent;
 					rsp.result = cpu_to_le16(L2CAP_CR_PEND);
 					rsp.status = cpu_to_le16(L2CAP_CS_AUTHOR_PEND);
+#ifdef CONFIG_HUAWEI_KERNEL
+     if (parent) { /* if parent isn't null, wake up */
+       parent->sk_data_ready(parent, 0);
+     }
+#else
 					parent->sk_data_ready(parent, 0);
+#endif
 
 				} else {
 					sk->sk_state = BT_CONFIG;
@@ -2708,6 +2717,15 @@ static inline int l2cap_connect_rsp(struct l2cap_conn *conn, struct l2cap_cmd_hd
 		break;
 
 	default:
+		/* sync kernel.org patch. commit a49184c229535ebedbb659214db2d4d1d77b7c07 */
+		/* don't delete l2cap channel if sk is owned by user */
+		if (sock_owned_by_user(sk)) {
+			sk->sk_state = BT_DISCONN;
+			l2cap_sock_clear_timer(sk);
+			l2cap_sock_set_timer(sk, HZ / 5);
+			break;
+		}
+
 		l2cap_chan_del(sk, ECONNREFUSED);
 		break;
 	}
@@ -2908,6 +2926,16 @@ static inline int l2cap_disconnect_req(struct l2cap_conn *conn, struct l2cap_cmd
 	del_timer(&l2cap_pi(sk)->retrans_timer);
 	del_timer(&l2cap_pi(sk)->monitor_timer);
 
+	/* sync kernel.org patch. commit a49184c229535ebedbb659214db2d4d1d77b7c07 */
+	/* don't delete l2cap channel if sk is owned by user */
+	if (sock_owned_by_user(sk)) {
+		sk->sk_state = BT_DISCONN;
+		l2cap_sock_clear_timer(sk);
+		l2cap_sock_set_timer(sk, HZ / 5);
+		bh_unlock_sock(sk);
+		return 0;
+	}
+
 	l2cap_chan_del(sk, ECONNRESET);
 	bh_unlock_sock(sk);
 
@@ -2934,6 +2962,16 @@ static inline int l2cap_disconnect_rsp(struct l2cap_conn *conn, struct l2cap_cmd
 	skb_queue_purge(SREJ_QUEUE(sk));
 	del_timer(&l2cap_pi(sk)->retrans_timer);
 	del_timer(&l2cap_pi(sk)->monitor_timer);
+
+	/* sync kernel.org patch. commit a49184c229535ebedbb659214db2d4d1d77b7c07 */
+	/* don't delete l2cap channel if sk is owned by user */
+	if (sock_owned_by_user(sk)) {
+		sk->sk_state = BT_DISCONN;
+		l2cap_sock_clear_timer(sk);
+		l2cap_sock_set_timer(sk, HZ / 5);
+		bh_unlock_sock(sk);
+		return 0;
+	}
 
 	l2cap_chan_del(sk, 0);
 	bh_unlock_sock(sk);

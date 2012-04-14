@@ -2266,6 +2266,12 @@ config FB_MSM_LCDC_SAMSUNG_WSVGA
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_AUTO_DETECT
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
+
 config FB_MSM_LCDC_GORDON_VGA
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -2288,7 +2294,7 @@ config FB_MSM_LCDC_WXGA
 
 choice
 	prompt "LCD Panel"
-	default FB_MSM_MDDI_AUTO_DETECT
+	default FB_MSM_LCDC_AUTO_DETECT
 
 config FB_MSM_LCDC_PRISM_WVGA_PANEL
 	depends on FB_MSM_LCDC_HW
@@ -2329,6 +2335,7 @@ config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	depends on FB_MSM_LCDC_HW
 	bool "MDDI Panel Auto Detect + LCDC Prism WVGA"
 	select FB_MSM_MDDI_AUTO_DETECT
+	select FB_MSM_LCDC_AUTO_DETECT
 	select FB_MSM_LCDC_PRISM_WVGA
 	select FB_MSM_LCDC_GORDON_VGA
 	select FB_MSM_LCDC_WXGA
@@ -2344,6 +2351,12 @@ config FB_MSM_MDDI_PANEL_AUTO_DETECT
 	select FB_MSM_MDDI_AUTO_DETECT
 	---help---
 	  Support for MDDI panel auto detect
+
+config FB_MSM_LCDC_PANEL_AUTO_DETECT
+bool "LCDC Panel Auto Detect"
+	select FB_MSM_LCDC_AUTO_DETECT
+	---help---
+	  Support for LCDC panel auto detect
 
 config FB_MSM_MDDI_PRISM_WVGA
 	bool "MDDI Prism WVGA Panel"

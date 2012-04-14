@@ -180,7 +180,17 @@ static int sdio_card_irq_put(struct mmc_card *card)
 
 	if (!--host->sdio_irqs) {
 		atomic_set(&host->sdio_irq_thread_abort, 1);
+#ifndef CONFIG_HUAWEI_WIFI_SDCC
 		kthread_stop(host->sdio_irq_thread);
+#else
+		if (host->claimed) {
+			mmc_release_host(host);
+			kthread_stop(host->sdio_irq_thread);
+			mmc_claim_host(host);
+		} else {
+			kthread_stop(host->sdio_irq_thread);
+		}
+#endif
 	}
 
 	return 0;
@@ -211,6 +221,13 @@ int sdio_claim_irq(struct sdio_func *func, sdio_irq_handler_t *handler)
 		return -EBUSY;
 	}
 
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+	func->irq_handler = handler;
+	ret = sdio_card_irq_get(func->card);
+	if (ret)
+		func->irq_handler = NULL;
+
+#endif
 	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IENx, 0, &reg);
 	if (ret)
 		return ret;
@@ -223,11 +240,13 @@ int sdio_claim_irq(struct sdio_func *func, sdio_irq_handler_t *handler)
 	if (ret)
 		return ret;
 
+#ifndef CONFIG_HUAWEI_WIFI_SDCC
 	func->irq_handler = handler;
 	ret = sdio_card_irq_get(func->card);
 	if (ret)
 		func->irq_handler = NULL;
 
+#endif
 	return ret;
 }
 EXPORT_SYMBOL_GPL(sdio_claim_irq);
@@ -248,11 +267,13 @@ int sdio_release_irq(struct sdio_func *func)
 
 	pr_debug("SDIO: Disabling IRQ for %s...\n", sdio_func_id(func));
 
+#ifndef CONFIG_HUAWEI_WIFI_SDCC
 	if (func->irq_handler) {
 		func->irq_handler = NULL;
 		sdio_card_irq_put(func->card);
 	}
 
+#endif
 	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IENx, 0, &reg);
 	if (ret)
 		return ret;
@@ -267,6 +288,13 @@ int sdio_release_irq(struct sdio_func *func)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+
+	if (func->irq_handler) {
+		func->irq_handler = NULL;
+		sdio_card_irq_put(func->card);
+	}
+#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(sdio_release_irq);

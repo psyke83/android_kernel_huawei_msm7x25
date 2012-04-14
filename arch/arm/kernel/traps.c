@@ -29,6 +29,9 @@
 #include <asm/traps.h>
 #include <asm/unwind.h>
 
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
+#include <linux/kdebug.h>
+#endif
 #include "ptrace.h"
 #include "signal.h"
 
@@ -228,7 +231,10 @@ static void __die(const char *str, int err, struct thread_info *thread, struct p
 {
 	struct task_struct *tsk = thread->task;
 	static int die_counter;
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
 
+        notify_die(0, str, regs, err, 0, SIGSEGV);
+#endif
 	printk(KERN_EMERG "Internal error: %s: %x [#%d]" S_PREEMPT S_SMP "\n",
 	       str, err, ++die_counter);
 	sysfs_printk_last_file();
@@ -439,7 +445,8 @@ do_cache_op(unsigned long start, unsigned long end, int flags)
 			end = vma->vm_end;
 
 		flush_cache_user_range(vma, start, end);
-#ifdef CONFIG_ARCH_MSM7X27
+#if defined(CONFIG_ARCH_MSM7X25) || defined(CONFIG_ARCH_MSM7X27) 
+
 		dmb();
 #endif
 
@@ -761,4 +768,8 @@ void __init early_trap_init(void)
 
 	flush_icache_range(vectors, vectors + PAGE_SIZE);
 	modify_domain(DOMAIN_USER, DOMAIN_CLIENT);
+
+#ifdef CONFIG_HUAWEI_KERNEL
+	user_debug = UDBG_UNDEFINED|UDBG_BADABORT|UDBG_SEGV;
+#endif
 }

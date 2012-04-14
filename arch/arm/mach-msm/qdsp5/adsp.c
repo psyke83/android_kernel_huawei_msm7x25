@@ -399,7 +399,27 @@ int __msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 	if (module->state != ADSP_STATE_ENABLED) {
 		spin_unlock_irqrestore(&adsp_write_lock, flags);
 		MM_ERR("module %s not enabled before write\n", module->name);
+#ifndef CONFIG_HUAWEI_CAMERA
 		return -ENODEV;
+#else
+		(void)wait_event_timeout(module->state_wait,
+				module->state == ADSP_STATE_ENABLED,
+				1 * HZ);
+        
+		mutex_lock(&module->lock);
+		if(module->state == ADSP_STATE_ENABLED)
+		{
+				mutex_unlock(&module->lock);
+				spin_lock_irqsave(&adsp_write_lock, flags);
+		}
+		else
+		{
+				mutex_unlock(&module->lock);
+				pr_err("adsp: module '%s' write wait for enabled timed out\n",
+						module->name);
+				return -ENODEV;
+		}
+#endif        
 	}
 	if (adsp_validate_module(module->id)) {
 		spin_unlock_irqrestore(&adsp_write_lock, flags);

@@ -18,7 +18,11 @@ config MMC_DEBUG
 	help
 	  This is an option for use by developers; most people should
 	  say N here.  This enables MMC core and driver debugging.
-
+	  
+config HUAWEI_WIFI_SDCC
+	bool "Wireless extensions sdcc files"
+	default y
+	  
 if MMC
 
 source "drivers/mmc/core/Kconfig"

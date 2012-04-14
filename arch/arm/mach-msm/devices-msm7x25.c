@@ -15,7 +15,6 @@
 
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
-
 #include <linux/dma-mapping.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
@@ -850,3 +849,115 @@ struct clk msm_clocks_7x25[] = {
 
 unsigned msm_num_clocks_7x25 = ARRAY_SIZE(msm_clocks_7x25);
 
+
+#define ATAG_CAMERA_ID 0x4d534D74
+/* setup calls mach->fixup, then parse_tags, parse_cmdline
+ * We need to setup meminfo in mach->fixup, so this function
+ * will need to traverse each tag to find smi tag.
+ */
+int __init parse_tag_camera_id(const struct tag *tags)
+{
+    int camera_id = 0, find = 0;
+
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_CAMERA_ID) {
+			printk(KERN_DEBUG "find the camera_id tag\n");
+			find = 1;
+			break;
+		}
+	}
+	if (find)
+		camera_id = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: camera_id = 0x%x\n", __func__, camera_id);
+	return camera_id;
+}
+__tagtable(ATAG_CAMERA_ID, parse_tag_camera_id);
+
+#define ATAG_LCD_ID 0x4d534D73
+int __init parse_tag_lcd_id(const struct tag *tags)
+{
+    int lcd_id = 0, find = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_LCD_ID) {
+			printk(KERN_DEBUG "find the lcd_id tag\n");
+			find = 1;
+			break;
+		}
+	}
+	if (find)
+		lcd_id = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: lcd_id = 0x%x\n", __func__, lcd_id);
+	return lcd_id;
+
+}
+__tagtable(ATAG_LCD_ID, parse_tag_lcd_id);
+
+#define ATAG_TS_ID 0x4d534D75
+int __init parse_tag_ts_id(const struct tag *tags)
+{
+    int ts_id = 0, find = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_TS_ID) {
+			printk(KERN_DEBUG "find the ts_id tag\n");
+			find = 1;
+			break;
+		}
+	}
+	if (find)
+		ts_id = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: ts_id = 0x%x\n", __func__, ts_id);
+	return ts_id;
+
+}
+__tagtable(ATAG_TS_ID, parse_tag_ts_id);
+
+#define ATAG_SUB_BOARD_ID 0x4d534D76
+int __init parse_tag_sub_board_id(const struct tag *tags)
+{
+    int sub_board_id = 0, find = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_SUB_BOARD_ID) {
+			printk(KERN_DEBUG "find the sub_board_id tag\n");
+			find = 1;
+			break;
+		}
+	}
+	if (find)
+		sub_board_id = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: sub_board_id = 0x%x\n", __func__, sub_board_id);
+	return sub_board_id;
+
+}
+__tagtable(ATAG_SUB_BOARD_ID, parse_tag_sub_board_id);
+
+
+#ifdef CONFIG_HUAWEI_KERNEL
+#define ATAG_BOOT_MODE_ID   0x4d534d77
+int __init parse_tag_boot_mode_id(const struct tag *tags)
+{
+    int boot_mode_id = 0, find = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_BOOT_MODE_ID) {
+			printk(KERN_DEBUG "find the boot_mode_id tag\n");
+			find = 1;
+			break;
+		}
+	}
+	if (find)
+		boot_mode_id = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: boot_mode_id = 0x%x\n", __func__, boot_mode_id);
+	return boot_mode_id;
+
+}
+__tagtable(ATAG_BOOT_MODE_ID, parse_tag_boot_mode_id);
+#endif

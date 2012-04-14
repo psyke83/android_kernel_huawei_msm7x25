@@ -200,9 +200,9 @@ static int mddi_probe(struct platform_device *pdev)
 
 #ifdef MSMFB_FRAMEBUF_32
 	if (mfd->index == 0)
-		mfd->fb_imgType = MDP_RGBA_8888; /* primary */
+		mfd->fb_imgType = MDP_RGBA_8888;
 	else
-		mfd->fb_imgType = MDP_RGB_565;	/* secondary */
+		mfd->fb_imgType = MDP_RGB_565;
 #else
 	mfd->fb_imgType = MDP_RGB_565;
 #endif

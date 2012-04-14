@@ -159,7 +159,9 @@ struct msm_hs_port {
 #define UARTDM_RX_BUF_SIZE 512
 #define RETRY_TIMEOUT 5
 #define UARTDM_NR 2
-
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+static struct msm_hs_port *g_msm_hs_port=NULL;
+#endif
 static struct msm_hs_port q_uart_port[UARTDM_NR];
 static struct platform_driver msm_serial_hs_platform_driver;
 static struct uart_driver msm_hs_driver;
@@ -910,7 +912,12 @@ static void msm_hs_dmov_rx_callback(struct msm_dmov_cmd *cmd_ptr,
 
 	msm_uport = container_of(cmd_ptr, struct msm_hs_port, rx.xfer);
 
+#ifdef CONFIG_HUAWEI_KERNEL
+    /* Change to HI_SOFTIRQ to schedule */
+	tasklet_hi_schedule(&msm_uport->rx.tlet);
+#else
 	tasklet_schedule(&msm_uport->rx.tlet);
+#endif
 }
 
 /*
@@ -1173,6 +1180,9 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 	if (isr_status & UARTDM_ISR_TXLEV_BMSK) {
 		/* TX FIFO is empty */
 		msm_uport->imr_reg &= ~UARTDM_ISR_TXLEV_BMSK;
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+        msm_uport->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
+#endif
 		msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 		if (!msm_hs_check_clock_off_locked(uport))
 			hrtimer_start(&msm_uport->clk_off_timer,
@@ -1493,6 +1503,9 @@ static int __init msm_hs_probe(struct platform_device *pdev)
 	}
 
 	msm_uport = &q_uart_port[pdev->id];
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+	g_msm_hs_port = msm_uport;
+#endif
 	uport = &msm_uport->uport;
 
 	uport->dev = &pdev->dev;
@@ -1539,7 +1552,11 @@ static int __init msm_hs_probe(struct platform_device *pdev)
 	uport->iotype = UPIO_MEM;
 	uport->fifosize = 64;
 	uport->ops = &msm_hs_ops;
+#ifndef CONFIG_HUAWEI_KERNEL
 	uport->flags = UPF_BOOT_AUTOCONF;
+#else
+	uport->flags = UPF_BOOT_AUTOCONF|UPF_LOW_LATENCY;
+#endif
 	uport->uartclk = 7372800;
 	msm_uport->imr_reg = 0x0;
 	msm_uport->clk = clk_get(&pdev->dev, "uartdm_clk");
@@ -1683,6 +1700,17 @@ static struct uart_ops msm_hs_ops = {
 	.request_port = msm_hs_request_port,
 };
 
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+
+void hci_trigger_hs_port_tx_ready(void){
+	if (g_msm_hs_port  != NULL){
+	    g_msm_hs_port->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
+	    msm_hs_write(&g_msm_hs_port->uport, UARTDM_IMR_ADDR, g_msm_hs_port->imr_reg);
+	}
+}
+
+EXPORT_SYMBOL(hci_trigger_hs_port_tx_ready);
+#endif
 module_init(msm_serial_hs_init);
 module_exit(msm_serial_hs_exit);
 MODULE_DESCRIPTION("High Speed UART Driver for the MSM chipset");

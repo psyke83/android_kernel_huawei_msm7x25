@@ -2433,6 +2433,10 @@ static int tty_tiocmset(struct tty_struct *tty, struct file *file, unsigned int 
 		TIOCM_RI|TIOCM_DSR|TIOCM_CTS;
 	clear &= TIOCM_DTR|TIOCM_RTS|TIOCM_OUT1|TIOCM_OUT2|TIOCM_LOOP|TIOCM_CD|
 		TIOCM_RI|TIOCM_DSR|TIOCM_CTS;
+#if 0
+	set &= TIOCM_DTR|TIOCM_RTS|TIOCM_OUT1|TIOCM_OUT2|TIOCM_LOOP;
+	clear &= TIOCM_DTR|TIOCM_RTS|TIOCM_OUT1|TIOCM_OUT2|TIOCM_LOOP;
+#endif
 	return tty->ops->tiocmset(tty, file, set, clear);
 }
 
@@ -2820,6 +2824,32 @@ struct device *tty_register_device(struct tty_driver *driver, unsigned index,
 	return device_create(tty_class, device, dev, NULL, name);
 }
 EXPORT_SYMBOL(tty_register_device);
+struct device *tty_register_device_virtname(struct tty_driver *driver, unsigned index,
+				   struct device *device, char *tty_name)
+{
+	char name[64];
+	dev_t dev = MKDEV(driver->major, driver->minor_start) + index;
+
+	if (index >= driver->num) 
+    {
+		printk(KERN_ERR "Attempt to register invalid tty line number "
+		       " (%d).\n", index);
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (driver->type == TTY_DRIVER_TYPE_PTY)
+	{
+      pty_line_name(driver, index, name);
+    }
+	else
+    {
+	  memset(name, 0x0 ,sizeof(name));   
+      snprintf(name, (sizeof(name)-1), "%s", tty_name);
+    }
+
+
+	return device_create(tty_class, device, dev, NULL, name);
+}
 
 /**
  * 	tty_unregister_device - unregister a tty device

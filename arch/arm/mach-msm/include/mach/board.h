@@ -22,6 +22,7 @@
 #include <linux/input.h>
 #include <linux/usb.h>
 
+#include <asm/setup.h>
 /* platform device data structures */
 struct msm_acpu_clock_platform_data {
 	uint32_t acpu_switch_time_us;
@@ -48,6 +49,10 @@ struct msm_camera_device_platform_data {
 	void (*camera_gpio_on) (void);
 	void (*camera_gpio_off)(void);
 	struct msm_camera_io_ext ioext;
+#ifdef CONFIG_HUAWEI_CAMERA  
+    bool (*get_board_support_flash) (void);    
+#endif
+
 };
 enum msm_camera_csi_data_format {
 	CSI_8BIT,
@@ -74,6 +79,13 @@ struct msm_camera_legacy_device_platform_data {
 
 #define MSM_CAMERA_FLASH_NONE 0
 #define MSM_CAMERA_FLASH_LED  1
+#ifdef CONFIG_HUAWEI_CAMERA
+struct msm_camera_sensor_vreg {
+	const char *vreg_name;
+	unsigned int mv;
+    uint8_t always_on;
+};
+#endif //CONFIG_HUAWEI_CAMERA
 
 #define MSM_CAMERA_FLASH_SRC_PMIC (0x00000001<<0)
 #define MSM_CAMERA_FLASH_SRC_PWM  (0x00000001<<1)
@@ -119,6 +131,17 @@ struct msm_camera_sensor_info {
 	struct msm_camera_sensor_flash_data *flash_data;
 	int csi_if;
 	struct msm_camera_csi_params csi_params;
+#ifdef CONFIG_HUAWEI_CAMERA
+    int sensor_module_id;
+    int sensor_module_value;
+    struct msm_camera_sensor_vreg *sensor_vreg;
+    uint8_t vreg_num;
+    int32_t (*vreg_enable_func) (struct msm_camera_sensor_vreg*,uint8_t);
+	int32_t (*vreg_disable_func)(struct msm_camera_sensor_vreg*,uint8_t);
+    uint8_t slave_sensor;
+    int32_t (*slave_elude_func) (struct msm_camera_sensor_info*, struct msm_camera_sensor_info*);
+    int32_t (*master_init_control_slave) (const struct msm_camera_sensor_info*);
+#endif //CONFIG_HUAWEI_CAMERA
 };
 
 struct clk;
@@ -196,7 +219,7 @@ struct msm_panel_common_pdata {
 
 struct lcdc_platform_data {
 	int (*lcdc_gpio_config)(int on);
-	int (*lcdc_power_save)(int);
+	int (*lcdc_power_save)(int on);
 };
 
 struct tvenc_platform_data {
@@ -260,6 +283,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *);
 struct mmc_platform_data;
 int __init msm_add_sdcc(unsigned int controller,
 		struct mmc_platform_data *plat);
+int __init rmt_storage_add_ramfs(void);
 
 struct msm_usb_host_platform_data;
 int __init msm_add_host(unsigned int host,
@@ -281,4 +305,16 @@ void msm_snddev_tx_route_deconfig(void);
 
 extern unsigned int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 
+void __init msm_add_usb_devices(u32 latency);
+
+int __init parse_tag_camera_id(const struct tag *tags);
+
+int __init parse_tag_lcd_id(const struct tag *tags);
+
+int __init parse_tag_ts_id(const struct tag *tags);
+int __init parse_tag_sub_board_id(const struct tag *tags);
+#ifdef CONFIG_USB_AUTO_INSTALL
+int __init parse_tag_boot_mode_id(const struct tag *tags);
+#endif  /* CONFIG_USB_AUTO_INSTALL */
+    
 #endif

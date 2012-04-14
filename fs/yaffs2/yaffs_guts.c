@@ -6338,6 +6338,15 @@ static int yaffs_ScanBackwards(yaffs_Device *dev)
 
 				  dev->nFreeChunks++;
 
+			/*yaffs2 patch from http://www.yaffs.net*/
+			#ifdef CONFIG_HUAWEI_KERNEL
+			} else if (tags.chunkId > YAFFS_MAX_CHUNK_ID ||
+				(tags.chunkId > 0 && tags.byteCount > dev->nDataBytesPerChunk) ||
+				tags.sequenceNumber != bi->sequenceNumber ) {
+				  printk("Chunk (%d:%d) with bad tags:obj = %d, chunkId = %d, byteCount = %d, ignored\n", 
+				  	blk, c,tags.objectId, tags.chunkId, tags.byteCount);
+				  dev->nFreeChunks++;
+			#endif
 			} else if (tags.chunkId > 0) {
 				/* chunkId > 0 so it is a data chunk... */
 				unsigned int endpos;

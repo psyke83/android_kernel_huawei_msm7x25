@@ -1,14 +1,14 @@
 comment "Camera Sensor Selection"
 config MT9T013
 	bool "Sensor mt9t013 (BAYER 3M)"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  MICRON 3M Bayer Sensor with AutoFocus
 
 config MT9D112
 	bool "Sensor mt9d112 (YUV 2M)"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  MICRON 2M YUV Sensor
@@ -21,14 +21,14 @@ config VX6953
 
 config MT9P012
 	bool "Sensor mt9p012 (BAYER 5M)"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  MICRON 5M Bayer Sensor with Autofocus
 
 choice
 	prompt "AF module"
-	depends on MT9P012 && !ARCH_MSM8X60
+	depends on MT9P012
 	default MSM_CAMERA_AF_FOXCONN
 
 config MSM_CAMERA_AF_FOXCONN
@@ -45,27 +45,27 @@ endchoice
 
 config MT9P012_KM
 	bool "Sensor mt9p012 KM module (BAYER 5M)"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  MICRON 5M Bayer Sensor KM modules with Autofocus
 
 config S5K3E2FX
 	bool "Sensor s5k3e2fx (Samsung 5M)"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  Samsung 5M with Autofocus
 
 config VB6801
 	bool "Sensor vb6801"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	---help---
 	  5M with flash
 
 config MSM_CAMERA_FLASH
 	bool "Qualcomm MSM camera flash support"
-	depends on MSM_CAMERA && !ARCH_MSM8X60
+	depends on MSM_CAMERA
 	default y
 	---help---
 	  Enable support for LED flash for msm camera
@@ -76,3 +76,52 @@ config MSM_GEMINI
 	default M
 	---help---
 	  Enable support for Gemini Jpeg Engine
+
+
+config HUAWEI_CAMERA
+	bool "huawei sensor"
+	default n
+	---help---
+	  MICRON 2M YUV Sensor
+
+config HUAWEI_CAMERA_SENSOR_OV3647
+	tristate "ov3647 is used"
+	default n
+	help
+	  if Y ,select HUAWEI_CAMERA_SENSOR_OV3647
+	  
+config HUAWEI_CAMERA_SENSOR_OV7690
+	tristate "ov7690 is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_OV7690
+	
+config HUAWEI_CAMERA_SENSOR_HIMAX0356
+	tristate "himax0356 is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_HIMAX0356
+	
+config HUAWEI_CAMERA_SENSOR_MT9D113
+	tristate "mt9d113 is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_MT9D113
+
+config HUAWEI_CAMERA_SENSOR_S5K5CA
+	tristate "s5k5ca is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_S5K5CA
+
+config HUAWEI_CAMERA_SENSOR_S5K4CDGX
+	tristate "s5k4cdgx is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_S5K4CDGX
+
+config HUAWEI_CAMERA_SENSOR_HI253
+	tristate "hi253 is used"
+	default n
+	help
+	if Y ,select HUAWEI_CAMERA_SENSOR_HI253

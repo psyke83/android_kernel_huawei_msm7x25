@@ -33,11 +33,17 @@
 #include <linux/spinlock.h>
 
 #include <linux/fb.h>
+#ifdef CONFIG_HUAWEI_KERNEL
+#include "lcdc_huawei_config.h"
+#endif
 
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mdp4.h"
 
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/hardware_self_adapt.h>
+#endif
 #ifdef CONFIG_FB_MSM_MDP40
 #define LCDC_BASE	0xC0000
 #define DTV_BASE	0xD0000
@@ -55,6 +61,36 @@ extern uint32 mdp_intr_mask;
 
 int first_pixel_start_x;
 int first_pixel_start_y;
+
+int   lcdc_polarity_set(void)
+{
+    int hsync_polarity;
+    int vsync_polarity;
+    int data_en_polarity;
+    int ctrl_polarity;
+
+    lcd_panel_type  hw_lcd_panel = LCD_NONE;
+
+    hw_lcd_panel = lcd_panel_probe();
+     
+    if(hw_lcd_panel == LCD_S6D74A0_SAMSUNG_HVGA)     
+    {               
+        hsync_polarity = 1;
+        vsync_polarity =  1;
+
+    }
+    else
+    {
+       hsync_polarity = 0;
+       vsync_polarity =  0;
+    }
+    data_en_polarity = 0;
+    ctrl_polarity =
+	    (data_en_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
+   
+    return ctrl_polarity;
+
+}
 
 int mdp_lcdc_on(struct platform_device *pdev)
 {
@@ -99,6 +135,9 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	uint32 block = MDP_DMA2_BLOCK;
 	int ret;
 
+#ifdef CONFIG_HUAWEI_KERNEL
+    lcd_align_type lcd_align = LCD_PANEL_ALIGN_LSB;
+#endif
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
 	if (!mfd)
@@ -117,7 +156,20 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	buf = (uint8 *) fbi->fix.smem_start;
 	buf += fbi->var.xoffset * bpp + fbi->var.yoffset * fbi->fix.line_length;
 
-	dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+#ifdef CONFIG_HUAWEI_KERNEL
+    lcd_align = lcd_align_probe();
+    
+    if(lcd_align == LCD_PANEL_ALIGN_MSB)
+    {
+          dma2_cfg_reg = DMA_PACK_ALIGN_MSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+    }
+    else
+    {
+         dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+    }
+#else
+    dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+#endif
 
 	if (mfd->fb_imgType == MDP_BGR_565)
 		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
@@ -227,7 +279,6 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		active_v_end = 0;
 	}
 
-
 #ifdef CONFIG_FB_MSM_MDP40
 	if (mfd->panel.type == HDMI_PANEL) {
 		block = MDP_DMA_E_BLOCK;
@@ -240,14 +291,14 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	}
 
 	lcdc_underflow_clr |= 0x80000000;	/* enable recovery */
-#else
-	hsync_polarity = 0;
-	vsync_polarity = 0;
-#endif
 	data_en_polarity = 0;
 
 	ctrl_polarity =
 	    (data_en_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
+#else
+	ctrl_polarity = lcdc_polarity_set();
+
+#endif
 
 	MDP_OUTP(MDP_BASE + timer_base + 0x4, hsync_ctrl);
 	MDP_OUTP(MDP_BASE + timer_base + 0x8, vsync_period);
@@ -276,7 +327,16 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		MDP_OUTP(MDP_BASE + timer_base + 0x38, active_v_end);
 	}
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	ret = 0;
+	if(LCD_HX8368A_SEIKO_QVGA != lcd_panel_probe() && LCD_S6D74A0_SAMSUNG_HVGA != lcd_panel_probe()
+		&& LCD_HX8368A_TRULY_QVGA != lcd_panel_probe())
+	{
 	ret = panel_next_on(pdev);
+	}
+#else
+	ret = panel_next_on(pdev);
+#endif
 	if (ret == 0) {
 		/* enable LCDC block */
 		MDP_OUTP(MDP_BASE + timer_base, 1);
@@ -284,6 +344,14 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	}
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+#ifdef CONFIG_HUAWEI_KERNEL
+
+	if(LCD_HX8368A_SEIKO_QVGA == lcd_panel_probe() || LCD_S6D74A0_SAMSUNG_HVGA == lcd_panel_probe()
+		|| LCD_HX8368A_TRULY_QVGA == lcd_panel_probe())
+	{
+	ret = panel_next_on(pdev);
+	}
+#endif
 
 	return ret;
 }
@@ -303,7 +371,14 @@ int mdp_lcdc_off(struct platform_device *pdev)
 		timer_base = DTV_BASE;
 	}
 #endif
-
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(LCD_HX8357B_TIANMA_HVGA == lcd_panel_probe()
+		|| LCD_HX8368A_TRULY_QVGA == lcd_panel_probe()
+		|| LCD_HX8368A_SEIKO_QVGA == lcd_panel_probe())
+	{
+		ret = panel_next_off(pdev);
+	}
+#endif
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	MDP_OUTP(MDP_BASE + timer_base, 0);
@@ -311,7 +386,16 @@ int mdp_lcdc_off(struct platform_device *pdev)
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_pipe_ctrl(block, MDP_BLOCK_POWER_OFF, FALSE);
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(LCD_HX8357B_TIANMA_HVGA != lcd_panel_probe() 
+		&& LCD_HX8368A_TRULY_QVGA != lcd_panel_probe()
+		&& LCD_HX8368A_SEIKO_QVGA != lcd_panel_probe())
+	{
+		ret = panel_next_off(pdev);
+	}
+#else
 	ret = panel_next_off(pdev);
+#endif
 
 	/* delay to make sure the last frame finishes */
 	mdelay(100);

@@ -46,9 +46,21 @@
 #include "tvenc.h"
 #include "mdp.h"
 #include "mdp4.h"
+#ifdef CONFIG_HUAWEI_KERNEL
+#define LCD_DEFAULT_BK_LEV              (104) 
+#endif
+
+#ifdef CONFIG_HUAWEI_EVALUATE_POWER_CONSUMPTION
+#include <mach/huawei_battery.h>
+#endif
 
 #ifdef CONFIG_FB_MSM_LOGO
+#if 0
 #define INIT_IMAGE_FILE "/logo.rle"
+#else
+#define WAITTING_IMAGE_FILE	"/waitting.rle"
+
+#endif
 extern int load_565rle_image(char *filename);
 #endif
 
@@ -236,7 +248,12 @@ static int msm_fb_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	mfd->panel_info.frame_count = 0;
+#ifdef CONFIG_HUAWEI_KERNEL
+    mfd->bl_level = LCD_DEFAULT_BK_LEV;
+#else
 	mfd->bl_level = mfd->panel_info.bl_max;
+#endif
+
 #ifdef CONFIG_FB_MSM_OVERLAY
 	mfd->overlay_play_enable = 1;
 #endif
@@ -496,6 +513,10 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl, u32 save)
 			mfd->bl_level = bkl_lvl;
 			pdata->set_backlight(mfd);
 
+#ifdef CONFIG_HUAWEI_EVALUATE_POWER_CONSUMPTION
+            huawei_rpc_current_consuem_notify(EVENT_LCD_BACKLIGHT, bkl_lvl);
+#endif
+
 			if (!save)
 				mfd->bl_level = old_lvl;
 		}
@@ -522,7 +543,13 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on) {
-			mdelay(100);
+#ifndef CONFIG_HUAWEI_KERNEL
+            mdelay(100);
+#else 
+            set_current_state(TASK_INTERRUPTIBLE);
+            schedule_timeout(HZ/10); 
+            
+#endif
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
 				mfd->panel_power_on = TRUE;
@@ -555,8 +582,13 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			mfd->op_enable = FALSE;
 			curr_pwr_state = mfd->panel_power_on;
 			mfd->panel_power_on = FALSE;
+#ifndef CONFIG_HUAWEI_KERNEL
+            mdelay(100);
+#else
+            set_current_state(TASK_INTERRUPTIBLE);
+            schedule_timeout(HZ/10); 
+#endif
 
-			mdelay(100);
 			ret = pdata->off(mfd->pdev);
 			if (ret)
 				mfd->panel_power_on = curr_pwr_state;
@@ -723,6 +755,31 @@ static struct fb_ops msm_fb_ops = {
 	.fb_mmap = msm_fb_mmap,
 };
 
+#ifdef CONFIG_HUAWEI_FOTA_UPDATA
+#include <asm/setup.h>
+#define ATAG_BOOT_FOTA_MODE 0x4d534D78
+static int fota_mode = 0;
+static int __init parse_tag_fota_mode(const struct tag *tag)
+{
+	fota_mode = 1;
+	return 0;
+}
+__tagtable(ATAG_BOOT_FOTA_MODE, parse_tag_fota_mode);
+int fb_get_fota_mode(void)
+{
+    return fota_mode;
+}
+EXPORT_SYMBOL(fb_get_fota_mode);
+#endif
+/* call register_framebuffer() flag ,if TRUE don't update screen */
+#ifdef CONFIG_HUAWEI_KERNEL
+int register_framebuffer_flag = 0;
+int from_msm_fb_register(void)
+{
+    return register_framebuffer_flag;
+}
+EXPORT_SYMBOL(from_msm_fb_register);
+#endif
 static int msm_fb_register(struct msm_fb_data_type *mfd)
 {
 	int ret = -ENODEV;
@@ -870,10 +927,14 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	   is writing directly to fb0, the framebuffer pitch
 	   also needs to be 32 pixel aligned */
 
+#ifdef MSMFB_FRAMEBUF_32
 	if (mfd->index == 0)
 		fix->line_length = ALIGN(panel_info->xres, 32) * bpp;
 	else
 		fix->line_length = panel_info->xres * bpp;
+#else
+		fix->line_length = panel_info->xres * bpp;
+#endif
 
 	fix->smem_len = fix->line_length * panel_info->yres * mfd->fb_page;
 
@@ -933,7 +994,9 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	fbi->screen_base = fbram;
 	fbi->fix.smem_start = (unsigned long)fbram_phys;
 
+#if 0
 	memset(fbi->screen_base, 0x0, fix->smem_len);
+#endif
 
 	mfd->op_enable = TRUE;
 	mfd->panel_power_on = FALSE;
@@ -954,7 +1017,10 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 			printk(KERN_ERR "%s: fb_alloc_cmap() failed!\n",
 					__func__);
 	}
-
+/* Set it true,don't update black screen */
+#ifdef CONFIG_HUAWEI_KERNEL
+    register_framebuffer_flag = 1;
+#endif
 	if (register_framebuffer(fbi) < 0) {
 		if (mfd->lut_update)
 			fb_dealloc_cmap(&fbi->cmap);
@@ -978,7 +1044,21 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	     mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
 
 #ifdef CONFIG_FB_MSM_LOGO
-	if (!load_565rle_image(INIT_IMAGE_FILE)) ;	/* Flip buffer */
+#ifdef CONFIG_HUAWEI_FOTA_UPDATA
+	if(fb_get_fota_mode())
+	{
+		if (load_565rle_image(WAITTING_IMAGE_FILE))    /* Flip buffer */
+		{
+			printk(KERN_ERR "%s: load waitting image failed from waitting.rle !\n",
+				__func__);
+		}
+	}
+	// remove load initlogo.rle
+#endif
+/* Set it flase,recovery */
+#ifdef CONFIG_HUAWEI_KERNEL
+    register_framebuffer_flag = 0;
+#endif
 #endif
 	ret = 0;
 
@@ -2195,6 +2275,10 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_ccs ccs_matrix;
 #endif
 	struct mdp_page_protection fb_page_protection;
+#ifdef CONFIG_HUAWEI_KERNEL
+	struct msm_fb_panel_data *pdata;
+    unsigned int contrast_val = 0;
+#endif    
 	int ret = 0;
 
 	switch (cmd) {
@@ -2394,6 +2478,21 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		ret = -EINVAL;
 #endif
 		break;
+#ifdef CONFIG_HUAWEI_KERNEL
+    case MSMFB_SET_DISPLAY_CONTRAST:
+
+        pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+        ret = copy_from_user(&contrast_val, argp, sizeof(unsigned int));
+        
+        if(ret)
+            return ret;
+        if((pdata) && (pdata->set_contrast))
+        {
+            pdata->set_contrast(mfd, contrast_val);
+        }
+        ret = 0;
+        break;
+#endif        
 
 	default:
 		MSM_FB_INFO("MDP: unknown ioctl (cmd=%d) received!\n", cmd);

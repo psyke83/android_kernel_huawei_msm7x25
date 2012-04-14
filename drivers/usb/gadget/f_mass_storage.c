@@ -77,8 +77,13 @@
 #include "f_mass_storage.h"
 #include "gadget_chips.h"
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+#include "usb_switch_huawei.h"
+#endif
 
 #define BULK_BUFFER_SIZE           16384
+
+#define MAX_UNFLUSHED_BYTES (4 * 1024 * 1024)
 
 /*-------------------------------------------------------------------------*/
 
@@ -200,6 +205,43 @@ struct bulk_cs_wrap {
 #define SC_WRITE_10			0x2a
 #define SC_WRITE_12			0xaa
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+static int do_rewind_switch = 0;
+
+static int pc_os_type = OS_TYPE_WINDOWS;
+
+static int pid_in_cmd;
+
+int udisk_in_norm = 0;
+
+#define STORE_FILE_DELAY            2
+#define STORE_FILE_RETRY_NUM        25
+static int store_file_number = 0;
+static int store_file_lun_index = 0;
+static struct delayed_work store_file_work;
+
+#define USB_FIX_NAME    "/sdcard/hwcfg/usb_fix.cfg"
+#define USB_SN_NAME     "/sdcard/hwcfg/usb_sn.cfg"
+#define SD_USB_CFG_CHECK_NUMBER             6
+#define SD_USB_CFG_CHECK_GAP                10    
+
+static struct delayed_work check_sd_usb_cfg_work;
+static int sd_usb_cfg_check_flag = 0;
+static int sd_usb_cfg_check_number = 0;
+
+void usb_get_state(unsigned *state_para, unsigned *usb_state_para);
+
+
+#define SEND_UDISK_UEVENT_DELAY 2 
+static struct delayed_work sent_udisk_uevent_work;
+static struct delayed_work fsg_switch_func;
+
+static u8 switch_udisk_state = 0;  
+extern usb_switch_stru usb_switch_para;
+extern u8 get_mmc_exist(void);
+extern void switch_set_udisk_state(struct switch_dev *sdev, const char* cmd);
+#endif 
+
 /* SCSI Sense Key/Additional Sense Code/ASC Qualifier values */
 #define SS_NO_SENSE				0
 #define SS_COMMUNICATION_FAILURE		0x040800
@@ -227,6 +269,7 @@ struct lun {
 	struct file	*filp;
 	loff_t		file_length;
 	loff_t		num_sectors;
+	unsigned int unflushed_bytes;
 
 	unsigned int	ro : 1;
 	unsigned int	prevent_medium_removal : 1;
@@ -369,6 +412,42 @@ struct fsg_dev {
 	struct wake_lock wake_lock;
 };
 static int send_status(struct fsg_dev *fsg);
+#ifdef CONFIG_USB_AUTO_INSTALL
+static u8 usbsdms_read_toc_data1[] = 
+{
+    0x00,0x0A,0x01,0x01,
+    0x00,0x14,0x01,0x00,0x00,0x00,0x02,0x00
+};
+
+static  u8 usbsdms_read_toc_data1_format0000[] = 
+{
+    0x00,0x12,0x01,0x01,
+    0x00,0x14,0x01,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x14,0xAA,0x00,0x00,0x00,0xFF,0xFF 
+};
+
+static u8 usbsdms_read_toc_data1_format0001[] = 
+{
+    0x00,0x0A,0x01,0x01,
+    0x00,0x14,0x01,0x00,0x00,0x00,0x00,0x00
+};
+
+static u8 usbsdms_read_toc_data2[] = 
+{
+    0x00,0x2e,0x01,0x01,
+    0x01,0x14,0x00,0xa0,0x00,0x00,0x00,0x00,0x01,0x00,0x00,
+    0x01,0x14,0x00,0xa1,0x00,0x00,0x00,0x00,0x01,0x00,0x00,
+    0x01,0x14,0x00,0xa2,0x00,0x00,0x00,0x00,0x06,0x00,0x3c,
+    0x01,0x14,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x02,0x00
+};
+
+static u8 usbsdms_read_toc_data3[] = 
+{
+    0x00,0x12,0x01,0x01,
+    0x00,0x14,0x01,0x00,0x00,0x00,0x02,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+};
+#endif 
 
 static inline struct fsg_dev *func_to_dev(struct usb_function *f)
 {
@@ -397,6 +476,7 @@ static struct fsg_dev			*the_fsg;
 
 static void	close_backing_file(struct fsg_dev *fsg, struct lun *curlun);
 static void	close_all_backing_files(struct fsg_dev *fsg);
+static int fsync_sub(struct lun *curlun);
 
 
 /*-------------------------------------------------------------------------*/
@@ -726,15 +806,16 @@ static void start_transfer(struct fsg_dev *fsg, struct usb_ep *ep,
 		enum fsg_buffer_state *state)
 {
 	int	rc;
+	unsigned long		flags;
 
 	DBG(fsg, "start_transfer req: %p, req->buf: %p\n", req, req->buf);
 	if (ep == fsg->bulk_in)
 		dump_msg(fsg, "bulk-in", req->buf, req->length);
 
-	spin_lock_irq(&fsg->lock);
+	spin_lock_irqsave(&fsg->lock, flags);
 	*pbusy = 1;
 	*state = BUF_STATE_BUSY;
-	spin_unlock_irq(&fsg->lock);
+	spin_unlock_irqrestore(&fsg->lock, flags);
 	rc = usb_ep_queue(ep, req, GFP_KERNEL);
 	if (rc != 0) {
 		*pbusy = 0;
@@ -1071,6 +1152,14 @@ static int do_write(struct fsg_dev *fsg)
 			file_offset += nwritten;
 			amount_left_to_write -= nwritten;
 			fsg->residue -= nwritten;
+			
+#ifdef MAX_UNFLUSHED_BYTES
+			curlun->unflushed_bytes += nwritten;
+			if (curlun->unflushed_bytes >= MAX_UNFLUSHED_BYTES) {
+				fsync_sub(curlun);
+				curlun->unflushed_bytes = 0;
+			}
+#endif
 
 			/* If an error occurred, report it and its position */
 			if (nwritten < amount) {
@@ -1297,6 +1386,299 @@ static int do_verify(struct fsg_dev *fsg)
 
 /*-------------------------------------------------------------------------*/
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+/*------------------------------------------------------------
+  function      : static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
+  description   : response for command READ TOC
+  input         : struct fsg_dev *fsg, struct fsg_buffhd *bh
+  output        : none
+  return        : response data length
+-------------------------------------------------------------*/
+static int do_read_toc(struct fsg_dev *fsg, struct fsg_buffhd *bh)
+{
+    u8    *buf = (u8 *) bh->buf;
+    usbsdms_read_toc_cmd_type *read_toc_cmd = NULL;
+    unsigned long response_length = 0;
+    u8 *response_ptr = NULL;
+
+
+    read_toc_cmd = (usbsdms_read_toc_cmd_type *)&fsg->cmnd[0];
+        
+    if ( 2 == read_toc_cmd->msf )
+    {
+        response_ptr = usbsdms_read_toc_data2;
+        response_length = sizeof(usbsdms_read_toc_data2);
+    }
+    else if(0 != read_toc_cmd->allocation_length_msb)
+    {
+        response_ptr = usbsdms_read_toc_data3;
+        response_length = sizeof(usbsdms_read_toc_data3);
+    }
+    else
+    {
+        if(0 == read_toc_cmd->format)
+        {
+            response_ptr = usbsdms_read_toc_data1_format0000;
+            response_length = sizeof(usbsdms_read_toc_data1_format0000);
+        }
+        else if(1 == read_toc_cmd->format)
+        {
+
+            response_ptr = usbsdms_read_toc_data1_format0001;
+            response_length = sizeof(usbsdms_read_toc_data1_format0001);
+        }
+        else
+        {
+            response_ptr = usbsdms_read_toc_data1;
+            response_length = sizeof(usbsdms_read_toc_data1);
+        }
+    }
+
+    memcpy(buf, response_ptr, response_length);
+
+    if(response_length < fsg->data_size_from_cmnd)
+    {
+        fsg->data_size_from_cmnd =response_length;
+    }
+
+    fsg->data_size = fsg->data_size_from_cmnd;
+    
+    fsg->residue = fsg->usb_amount_left = fsg->data_size;
+    
+    return response_length;
+}
+
+/* support switch udisk interface from pc */
+/*------------------------------------------------------------
+  function      : usb_sent_udisk_uevent_func
+  description   : sent switch udisk uevent to framework by switch class
+  input         : no side
+  output        : void
+  return        : void
+-------------------------------------------------------------*/
+static void usb_sent_udisk_uevent_func(struct work_struct *w)
+{
+    USB_PR("usb_sent_udisk_uevent_func: send '%s' event\n", MOUNT_AS_UDISK);
+    switch_set_udisk_state(&the_fsg->sdev, MOUNT_AS_UDISK);
+}
+
+/*------------------------------------------------------------
+  function      : do_rewind
+  description   : process SCSI command REWIND
+  input         : struct fsg_dev *fsg, struct fsg_buffhd *bh
+  output        : pc_os_type, pid_in_cmd
+  return        : 0 for success
+-------------------------------------------------------------*/
+static int do_rewind(struct fsg_dev *fsg, struct fsg_buffhd *bh)
+{
+    scsi_rewind_cmd_type *rewind_cmd = NULL;
+    int time_to_delay = 0;
+
+    USB_PR("%s\n", __func__);
+
+    rewind_cmd = (scsi_rewind_cmd_type *)&fsg->cmnd[0];
+
+    if(do_rewind_switch)
+    {
+        return 0;
+    }
+    
+    pc_os_type = rewind_cmd->os_type;
+    time_to_delay = rewind_cmd->time_to_delay;
+    pid_in_cmd = (rewind_cmd->pidh << 8) | rewind_cmd->pidl;
+    USB_PR("os=0x%x, delay=%ds, pid=0x%x\n", pc_os_type, time_to_delay, pid_in_cmd);
+
+    /* cdrom switch to composition interfaces failed */
+    do_rewind_switch = 1;
+    //schedule_delayed_work(&fsg_switch_func, time_to_delay * CHG_SUSP_WORK_DELAY);
+
+    /* cdrom switch to composition interfaces failed */
+    
+    /* set the pid to multiport when the input pid is zero */
+    if(0 == pid_in_cmd)
+    {
+        pid_in_cmd = curr_usb_pid_ptr->norm_pid;
+        USB_PR("pid_in_cmd=0, set to curr_usb_pid_ptr->norm_pid=0x%x\n", curr_usb_pid_ptr->norm_pid);
+    }
+
+    /* fixup udisk switch issue */
+    /* if the current pid is same the new pid, do nothing */
+    if (android_get_product_id() != pid_in_cmd)
+    {
+        /* when rework in manufacture, if the phone is in google ports mode, 
+           we need to switch it to normal ports mode for using the diag. 
+        */
+        if (curr_usb_pid_ptr->norm_pid == pid_in_cmd
+          && GOOGLE_INDEX == usb_para_info.usb_pid_index)
+        {
+          set_usb_sn(NULL);
+          /* set the adb enable for enable diag port when adb debug is disable */
+          kernel_set_adb_enable(1);
+        }
+
+        /* initiate the switch immediately */
+        usb_switch_composition(pid_in_cmd, 0);
+    }
+    else
+    {
+        USB_PR("switch blocked for already in pid state.\n");
+    }
+
+    /* delete 4 lines */
+
+    do_rewind_switch = 0;
+    USB_PR("do_rewind(), end\n");
+    
+    return 0;
+}
+
+/* support switch udisk interface from pc */
+/*------------------------------------------------------------
+  function      : check_udisk_switch
+  description   : check the switch udisk command from pc is right
+  input         : subcmd from pc and pid from pc.
+  output        : none
+  return        : switch_udisk_result
+-------------------------------------------------------------*/
+static u8 check_udisk_switch(switch_udisk_subcmd cmd, u16* pid)
+{
+  u16 curr_pid = android_get_product_id();
+  switch_udisk_result ret = RET_SUCESS;
+
+  USB_PR("check_udisk_switch: cmd=%d; curr_pid=%d\n", cmd, curr_pid);
+  switch (cmd)
+  {
+    case CMD_SWITCH_UDISK:
+      /* mobile current in udisk, do nothing */
+      if (curr_usb_pid_ptr->udisk_pid == curr_pid){
+        ret = RET_DO_NOTHING;
+      }else if (!get_mmc_exist()){
+        ret = RET_SWITCH_SD_ABSENCE;
+      }
+      *pid = curr_usb_pid_ptr->udisk_pid;
+      break;
+    case CMD_SWITCH_CDROM:
+      /* mobile current not in udisk (in cdrom or normal), do nothing */
+      if (curr_usb_pid_ptr->udisk_pid != curr_pid){
+        ret = RET_DO_NOTHING;
+      }
+      *pid = curr_usb_pid_ptr->cdrom_pid;
+      break;
+    default:
+      ret = RET_UNKNOWN_CMD;
+      break;
+  }
+
+  USB_PR("check_udisk_switch: result=%d\n", ret);
+  return (u8)ret;
+  
+}
+
+/*------------------------------------------------------------
+  function      : do_udisk_switch
+  description   : process the switch udisk command from pc
+  input         : input buf:fsg
+  output        : output buf:bh; output len:cmd_len.
+  return        : switch_udisk_result
+-------------------------------------------------------------*/
+static u8 do_udisk_switch(struct fsg_dev *fsg, struct fsg_buffhd *bh, u32 cmd_len)
+{
+    scsi_rewind_cmd_type_extend *switch_cmd = NULL;
+    int time_to_delay = 0;
+    const u8 reply_len = 2; /* the data len from mobile to pc */
+    u16 curr_pid;
+    u8	*buf = (u8 *) bh->buf;
+
+    memset(buf, 0, cmd_len);
+    switch_cmd = (scsi_rewind_cmd_type_extend *)&fsg->cmnd[0];
+
+    pc_os_type = switch_cmd->cmd.os_type;
+    time_to_delay = switch_cmd->cmd.time_to_delay;
+    pid_in_cmd = (switch_cmd->cmd.pidh << 8) | switch_cmd->cmd.pidl;
+
+    USB_PR("do_udisk_switch: os=%d; time=%d; pid=%d; main=%d; sub=%d\n", 
+      pc_os_type, time_to_delay, pid_in_cmd,
+      switch_cmd->switch_udisk_maincmd, switch_cmd->switch_udisk_subcmd);
+
+    /* if mobile is in switch state, return directly */
+    if(usb_switch_para.inprogress)
+    {
+      buf[0]= RET_SWITCH_BUSY;
+      return reply_len;
+    }
+
+    if (MAINCMD_INQUIRY == switch_cmd->switch_udisk_maincmd){
+        /* inquiry mobile state from pc */
+        buf[0] = check_udisk_switch(switch_cmd->switch_udisk_subcmd, &curr_pid);
+        return reply_len;
+    }else if (MAINCMD_RUN == switch_cmd->switch_udisk_maincmd){
+        /* switch udisk command from pc */
+        buf[0] = check_udisk_switch(switch_cmd->switch_udisk_subcmd, &curr_pid);
+        /* if mobile's state is error, return directly */
+        if (buf[0]){
+          return reply_len;
+        }
+        switch_udisk_state = 1;
+    }else{
+        USB_PR("do_udisk_switch: unknown command %d\n", switch_cmd->switch_udisk_maincmd);
+        buf[0]= RET_UNKNOWN_CMD;
+        return reply_len; 
+    }
+
+    /* if the pid form pc isn't empty, use the pid from pc, else use curr_pid */
+    if (!pid_in_cmd)
+    {
+      pid_in_cmd = curr_pid;
+    }
+
+    /* run the switch command from pc */
+    schedule_delayed_work(&fsg_switch_func, time_to_delay * CHG_SUSP_WORK_DELAY);
+
+    buf[0] = RET_SUCESS;
+    return reply_len;
+}
+
+/* fixup udisk switch issue */
+static void usb_switch_udisk_func(struct work_struct *w)
+{
+    USB_PR("%s begin\n", __func__);
+    
+    if(0 == pid_in_cmd)
+    {
+      USB_PR("%s, pid is null\n", __func__);
+      return;
+    }
+
+    if(do_rewind_switch)
+    {
+        USB_PR("%s, switch block for usb is in switching...\n", __func__);
+        return;
+    }
+
+    do_rewind_switch = 1;
+    
+    if (android_get_product_id() != pid_in_cmd)
+    {
+      usb_switch_composition(pid_in_cmd, 0);
+    }
+    else
+    {
+      USB_PR("switch block for already in pid state.\n");
+    }
+
+    /* if switch_udisk_state is set, and the pid is the udisk pid. It's mean
+       the pc sent a switch udisk command to the mobile.
+    */
+    if (switch_udisk_state && curr_usb_pid_ptr->udisk_pid == pid_in_cmd){
+      schedule_delayed_work(&sent_udisk_uevent_work, SEND_UDISK_UEVENT_DELAY * HZ);
+    }
+    
+    switch_udisk_state = 0;
+    do_rewind_switch = 0;
+    
+    return;
+}
+#endif  /*  #ifdef CONFIG_USB_AUTO_INSTALL */
 static int do_inquiry(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 {
 	u8	*buf = (u8 *) bh->buf;
@@ -1309,7 +1691,32 @@ static int do_inquiry(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 	}
 
 	memset(buf, 0, 8);	/* Non-removable, direct-access device */
-
+#ifdef CONFIG_USB_AUTO_INSTALL
+    {
+        u16 curr_pid;
+        curr_pid = android_get_product_id();
+        if(curr_usb_pid_ptr->cdrom_pid == curr_pid)
+        {
+            buf[0] = 5;     /* set to CDROM for lun1*/
+        }
+        else if((curr_usb_pid_ptr->norm_pid == curr_pid) && (0 == udisk_in_norm))
+        {
+            buf[0] = 5;     /* set to CDROM for lun1*/
+        }
+        else if(curr_usb_pid_ptr->auth_pid == curr_pid)
+        {
+            buf[0] = 5;
+        }
+        /* add new pid config for google */
+        else if(GOOGLE_INDEX == usb_para_info.usb_pid_index)
+        {
+            if(fsg->lun == 1)
+            {
+                buf[0] = 5;
+            }
+        }
+    }
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 	buf[1] = 0x80;	/* set removable bit */
 	buf[2] = 2;		/* ANSI SCSI level 2 */
 	buf[3] = 2;		/* SCSI-2 INQUIRY data format */
@@ -1843,7 +2250,21 @@ static int check_command(struct fsg_dev *fsg, int cmnd_size,
 		if ((fsg->cmnd[0] == SC_REQUEST_SENSE && fsg->cmnd_size == 12)
 		 || (fsg->cmnd[0] == SC_INQUIRY && fsg->cmnd_size == 12))
 			cmnd_size = fsg->cmnd_size;
+		/* the coputer couldn't restart when plug the phone */
+	    #ifdef CONFIG_USB_AUTO_INSTALL
+	    else if (12 == fsg->cmnd_size){
+	      /* because in bootloader phase some computers send the scsi cmd length 
+	        isn't standard, it will result the computers start in long time or 
+	        can't start at all. */
+	      USB_PR("huawei_mass_sotrage: cmd(0x%02x) size(%d) isn't standard size(%d)\n", 
+	      fsg->cmnd[0], fsg->cmnd_size, cmnd_size);
+	    }
+	    #endif
 		else {
+	      #ifdef CONFIG_USB_AUTO_INSTALL
+	      USB_PR("huawei_mass_sotrage: cmd(0x%02x) size(%d) isn't standard size(%d)\n", 
+	      fsg->cmnd[0], fsg->cmnd_size, cmnd_size);
+	      #endif
 			fsg->phase_error = 1;
 			return -EINVAL;
 		}
@@ -1931,6 +2352,17 @@ static int do_scsi_command(struct fsg_dev *fsg)
 
 	down_read(&fsg->filesem);	/* We're using the backing file */
 	switch (fsg->cmnd[0]) {
+#ifdef CONFIG_USB_AUTO_INSTALL
+    case SC_READ_TOC:
+        fsg->data_size_from_cmnd = (fsg->cmnd[7]<<8) | fsg->cmnd[8];
+        if ((reply = check_command(fsg, 10, DATA_DIR_TO_HOST,
+                (3<<1) | (7<<7), 1,
+                "READ TOC")) == 0)
+        {
+            reply = do_read_toc(fsg, bh);
+        }
+        break;
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 
 	case SC_INQUIRY:
 		fsg->data_size_from_cmnd = fsg->cmnd[4];
@@ -2091,6 +2523,26 @@ static int do_scsi_command(struct fsg_dev *fsg)
 	 * They don't mean much in this setting.  It's left as an exercise
 	 * for anyone interested to implement RESERVE and RELEASE in terms
 	 * of Posix locks. */
+#ifdef CONFIG_USB_AUTO_INSTALL
+    case SC_REWIND_11:
+    case SC_REWIND:
+        /* support switch udisk interface from pc */
+        if (fsg->cmnd_size != sizeof(scsi_rewind_cmd_type_extend)){
+          USB_PR("do rewind\n");
+          reply = do_rewind(fsg, bh);
+        }else{
+          USB_PR("do_switch: data_size=%d; data_size_form_cmnd=%d; data_dir=%d; residue=%d\n",
+            fsg->data_size, fsg->data_size_from_cmnd, fsg->data_dir, fsg->residue);
+          if (fsg->data_size >= MAX_COMMAND_SIZE){
+            fsg->data_size = MAX_COMMAND_SIZE;
+          }
+          reply = do_udisk_switch(fsg, bh, fsg->data_size);
+          fsg->data_size_from_cmnd = fsg->data_size;
+          fsg->residue = fsg->data_size_from_cmnd;
+          USB_PR("do_switch result=%d\n", reply);
+          break;
+        }
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 	case SC_FORMAT_UNIT:
 	case SC_RELEASE:
 	case SC_RESERVE:
@@ -2322,8 +2774,9 @@ static void adjust_wake_lock(struct fsg_dev *fsg)
 {
 	int ums_active = 0;
 	int i;
+	unsigned long		flags;
 
-	spin_lock_irq(&fsg->lock);
+	spin_lock_irqsave(&fsg->lock, flags);
 
 	if (fsg->config) {
 		for (i = 0; i < fsg->nluns; ++i) {
@@ -2337,8 +2790,12 @@ static void adjust_wake_lock(struct fsg_dev *fsg)
 	else
 		wake_unlock(&fsg->wake_lock);
 
-	spin_unlock_irq(&fsg->lock);
+	spin_unlock_irqrestore(&fsg->lock, flags);
 }
+
+#ifdef CONFIG_USB_AUTO_INSTALL
+extern int g_android_switch_flag;
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 
 /*
  * Change our operational configuration.  This code must agree with the code
@@ -2372,7 +2829,6 @@ static int do_set_config(struct fsg_dev *fsg, u8 new_config)
 
 
 /*-------------------------------------------------------------------------*/
-
 static void handle_exception(struct fsg_dev *fsg)
 {
 	siginfo_t		info;
@@ -2383,6 +2839,7 @@ static void handle_exception(struct fsg_dev *fsg)
 	u8			new_config;
 	struct lun		*curlun;
 	int			rc;
+	unsigned long		flags;
 
 	DBG(fsg, "handle_exception state: %d\n", (int)fsg->state);
 	/* Clear the existing signals.  Anything but SIGUSR1 is converted
@@ -2406,7 +2863,7 @@ static void handle_exception(struct fsg_dev *fsg)
 
 	/* Reset the I/O buffer states and pointers, the SCSI
 	 * state, and the exception.  Then invoke the handler. */
-	spin_lock_irq(&fsg->lock);
+	spin_lock_irqsave(&fsg->lock, flags);
 
 	for (i = 0; i < NUM_BUFFERS; ++i) {
 		bh = &fsg->buffhds[i];
@@ -2431,7 +2888,7 @@ static void handle_exception(struct fsg_dev *fsg)
 		}
 		fsg->state = FSG_STATE_IDLE;
 	}
-	spin_unlock_irq(&fsg->lock);
+	spin_unlock_irqrestore(&fsg->lock, flags);
 
 	/* Carry out any extra actions required for the exception */
 	switch (old_state) {
@@ -2440,10 +2897,10 @@ static void handle_exception(struct fsg_dev *fsg)
 
 	case FSG_STATE_ABORT_BULK_OUT:
 		DBG(fsg, "FSG_STATE_ABORT_BULK_OUT\n");
-		spin_lock_irq(&fsg->lock);
+		spin_lock_irqsave(&fsg->lock, flags);
 		if (fsg->state == FSG_STATE_STATUS_PHASE)
 			fsg->state = FSG_STATE_IDLE;
-		spin_unlock_irq(&fsg->lock);
+		spin_unlock_irqrestore(&fsg->lock, flags);
 		break;
 
 	case FSG_STATE_RESET:
@@ -2451,6 +2908,14 @@ static void handle_exception(struct fsg_dev *fsg)
 		break;
 
 	case FSG_STATE_CONFIG_CHANGE:
+// realloc/release the mem according to new_config's state
+#ifdef CONFIG_HUAWEI_KERNEL
+		if(fsg->new_config) {
+			do_set_interface(fsg, 0);
+		}else {
+			do_set_interface(fsg, -1);
+		}
+#endif
 		rc = do_set_config(fsg, new_config);
 		if (new_config == 0) {
 			/* We're using the backing file */
@@ -2464,19 +2929,22 @@ static void handle_exception(struct fsg_dev *fsg)
 	case FSG_STATE_TERMINATED:
 		do_set_interface(fsg, -1);
 		do_set_config(fsg, 0);			/* Free resources */
-		spin_lock_irq(&fsg->lock);
+		spin_lock_irqsave(&fsg->lock, flags);
+#ifdef CONFIG_USB_AUTO_INSTALL
+		g_android_switch_flag = 0; // reset the flags
+		printk("%s: reset flag=%d\n", __func__, g_android_switch_flag);
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 		fsg->state = FSG_STATE_TERMINATED;	/* Stop the thread */
-		spin_unlock_irq(&fsg->lock);
+		spin_unlock_irqrestore(&fsg->lock, flags);
 		break;
 	}
 }
 
-
 /*-------------------------------------------------------------------------*/
-
 static int fsg_main_thread(void *fsg_)
 {
 	struct fsg_dev		*fsg = fsg_;
+	unsigned long		flags;
 
 	/* Allow the thread to be killed by a signal, but set the signal mask
 	 * to block everything but INT, TERM, KILL, and USR1. */
@@ -2508,18 +2976,18 @@ static int fsg_main_thread(void *fsg_)
 		if (get_next_command(fsg))
 			continue;
 
-		spin_lock_irq(&fsg->lock);
+		spin_lock_irqsave(&fsg->lock, flags);
 		if (!exception_in_progress(fsg))
 			fsg->state = FSG_STATE_DATA_PHASE;
-		spin_unlock_irq(&fsg->lock);
+		spin_unlock_irqrestore(&fsg->lock, flags);
 
 		if (do_scsi_command(fsg) || finish_reply(fsg))
 			continue;
 
-		spin_lock_irq(&fsg->lock);
+		spin_lock_irqsave(&fsg->lock, flags);
 		if (!exception_in_progress(fsg))
 			fsg->state = FSG_STATE_STATUS_PHASE;
-		spin_unlock_irq(&fsg->lock);
+		spin_unlock_irqrestore(&fsg->lock, flags);
 
 #ifdef CONFIG_USB_CSW_HACK
 		/* Since status is already sent for write scsi command,
@@ -2533,15 +3001,15 @@ static int fsg_main_thread(void *fsg_)
 		if (send_status(fsg))
 			continue;
 
-		spin_lock_irq(&fsg->lock);
+		spin_lock_irqsave(&fsg->lock, flags);
 		if (!exception_in_progress(fsg))
 			fsg->state = FSG_STATE_IDLE;
-		spin_unlock_irq(&fsg->lock);
+		spin_unlock_irqrestore(&fsg->lock, flags);
 		}
 
-	spin_lock_irq(&fsg->lock);
+	spin_lock_irqsave(&fsg->lock, flags);
 	fsg->thread_task = NULL;
-	spin_unlock_irq(&fsg->lock);
+	spin_unlock_irqrestore(&fsg->lock, flags);
 
 	/* In case we are exiting because of a signal, unregister the
 	 * gadget driver and close the backing file. */
@@ -2551,7 +3019,6 @@ static int fsg_main_thread(void *fsg_)
 	/* Let the unbind and cleanup routines know the thread has exited */
 	complete_and_exit(&fsg->thread_notifier, 0);
 }
-
 
 /*-------------------------------------------------------------------------*/
 
@@ -2621,6 +3088,7 @@ static int open_backing_file(struct fsg_dev *fsg, struct lun *curlun,
 	curlun->ro = ro;
 	curlun->filp = filp;
 	curlun->file_length = size;
+	curlun->unflushed_bytes = 0;
 	curlun->num_sectors = num_sectors;
 	LDBG(curlun, "open backing file: %s size: %lld num_sectors: %lld\n",
 			filename, size, num_sectors);
@@ -2699,6 +3167,35 @@ static ssize_t store_file(struct device *dev, struct device_attribute *attr,
 	struct fsg_dev	*fsg = dev_get_drvdata(dev);
 	int		rc = 0;
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+    /* add new pid config for google */
+    USB_PR("%s, buf=%s, count=%d, pid_index=%d\n", __func__, buf, count, usb_para_info.usb_pid_index);
+
+    if(GOOGLE_INDEX != usb_para_info.usb_pid_index)
+    {
+        if((*buf == 0)&&(count == 1))
+        {
+            /* app exit udisk, usb should switch to CDROM */
+            USB_PR("initiate usb switch to CDROM, delay 100ms\n");
+            initiate_switch_to_cdrom(10); //10ms * 10 = 100ms
+        }
+        {
+            unsigned ui_state, ui_usb_state;
+            //extern void usb_get_state(unsigned *state_para, unsigned *usb_state_para);
+            
+            usb_get_state(&ui_state, &ui_usb_state);
+            USB_PR("ui_state=%d, ui_usb_state=%d\n", ui_state, ui_usb_state);
+
+            /* initiate switch to CDROM when ui_state is OFFLINE(2) and the 
+               written string including u disk path */
+            if((ui_state == 2) && (strstr(buf, "vold/179:0")))
+            {
+                USB_PR("initiate usb switch to CDROM for OFFLINE state, delay 100ms\n");
+                initiate_switch_to_cdrom(10); //10ms * 10 = 100ms
+            }
+        }
+    }
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 	DBG(fsg, "store_file: \"%s\"\n", buf);
 #if 0
 	/* disabled because we need to allow closing the backing file if the media was removed */
@@ -2712,6 +3209,7 @@ static ssize_t store_file(struct device *dev, struct device_attribute *attr,
 	if (count > 0 && buf[count-1] == '\n')
 		((char *) buf)[count-1] = 0;
 
+	USB_PR("curlun=%x\n", curlun);
 	/* Eject current medium */
 	down_write(&fsg->filesem);
 	if (backing_file_is_open(curlun)) {
@@ -2727,9 +3225,206 @@ static ssize_t store_file(struct device *dev, struct device_attribute *attr,
 					SS_NOT_READY_TO_READY_TRANSITION;
 	}
 	up_write(&fsg->filesem);
+	USB_PR("leave\n");
 	return (rc < 0 ? rc : count);
 }
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+/* Delay work function for store_file(), 
+   It is initiated only when the last store_file failed. 
+*/
+static void store_file_again_func(struct work_struct *w)
+{
+	struct fsg_dev		*fsg = the_fsg;
+	//int			rc;
+	struct lun		*curlun;
+    ssize_t ret_val;
+
+    store_file_number ++;
+    USB_PR("%s, number=%d\n", __func__, store_file_number);
+    /* add new pid config for google */
+    curlun = &fsg->luns[store_file_lun_index];
+    ret_val = store_file(&curlun->dev, NULL, CDROM_PATH_FILE, strlen(CDROM_PATH_FILE));
+    if(ret_val < 0)
+    {
+        if(store_file_number < STORE_FILE_RETRY_NUM)
+        {
+            USB_PR("%s (fail), ret_val=%d, retry later.\n", __func__, ret_val);
+            schedule_delayed_work(&store_file_work, STORE_FILE_DELAY * HZ);
+        }
+        else
+        {
+            USB_PR("%s (fail), ret_val=%d. Max retry number reached, don't try again. \n", __func__, ret_val);
+        }
+    }
+    else
+    {
+        USB_PR("%s (OK), ret_val=%d\n", __func__, ret_val);
+    }
+    
+}
+
+/* switch usb composition to multiport and
+   set the usb serial number if usb_sn_flag = 1
+*/
+static void usb_fix_and_set_sn(int usb_sn_flag)
+{
+    if(usb_sn_flag == 1)
+    {
+        /* set USB sn to bluetooth address */
+        set_usb_sn(usb_para_data.usb_para.usb_serial);
+    }
+    usb_switch_composition(curr_usb_pid_ptr->norm_pid, 0);
+}
+/*
+    check the file USB_FIX_NAME and USB_SN_NAME are exist or not. 
+    if file USB_FIX_NAME is exist, switch usb composition to multiport.
+    if file USB_SN_NAME is ixist, set the usb sn to bluetooth address
+*/
+static void check_sd_usb_cfg_func(struct work_struct *w)
+{
+	struct file	*filp = NULL;
+    int usb_fix_flag = 0;
+    int usb_sn_flag = 0;
+
+    USB_PR("%s(%d)\n", __func__, sd_usb_cfg_check_number);
+    
+	filp = filp_open(USB_FIX_NAME, O_RDONLY | O_LARGEFILE, 0);
+	if (IS_ERR(filp)) 
+    {
+		USB_PR("unable to open file: %s\n", USB_FIX_NAME);
+	}
+    else
+    {
+        usb_fix_flag = 1;
+		USB_PR("open file: %s success\n", USB_FIX_NAME);
+        filp_close(filp, NULL);
+    }
+
+	filp = filp_open(USB_SN_NAME, O_RDONLY | O_LARGEFILE, 0);
+	if (IS_ERR(filp)) 
+    {
+		USB_PR("unable to open file: %s\n", USB_SN_NAME);
+	}
+    else
+    {
+        usb_sn_flag = 1;
+		USB_PR("open file: %s success\n", USB_SN_NAME);
+        filp_close(filp, NULL);
+    }
+
+    sd_usb_cfg_check_number ++;
+
+    if((usb_fix_flag != 0) || (usb_sn_flag != 0))
+    {
+        /* at least one file is opened success, switch USB to multiport */
+        USB_PR("usb_fix_flag=%d, usb_sn_flag=%d\n", usb_fix_flag, usb_sn_flag);
+        sd_usb_cfg_check_number = 0;
+        usb_fix_and_set_sn(usb_sn_flag);
+    }
+    else
+    {
+        if(sd_usb_cfg_check_number >= SD_USB_CFG_CHECK_NUMBER)
+        {
+            USB_PR("finish %s, cfg file is not found\n", __func__);
+            sd_usb_cfg_check_number = 0;
+        }
+        else
+        {
+            USB_PR("do %s %d seconds later...\n", __func__, SD_USB_CFG_CHECK_GAP);
+            schedule_delayed_work(&check_sd_usb_cfg_work, SD_USB_CFG_CHECK_GAP * HZ);
+        }
+    }
+}
+
+/* When the USB cable plugs in, initiate a delay work to check the configure file
+   for USB composition is exist or not in the SD card. 
+*/
+void sd_usb_cfg_check(void)
+{
+    /* check sdcard usb config file */
+    if(sd_usb_cfg_check_flag == 0)
+    {
+        USB_PR("initiate check_sd_usb_cfg_func when USB plug in\n");
+        sd_usb_cfg_check_flag = 1;
+        schedule_delayed_work(&check_sd_usb_cfg_work, SD_USB_CFG_CHECK_GAP * HZ);
+    }
+}
+
+/* Initiate SD card configure file checking when mobile powerup
+*/
+static void startup_sd_usb_cfg_check(void)
+{
+    /* startup check flag, used only for powerup */
+    static int startup_sd_usb_cfg_check_flag = 0;
+    unsigned ui_state, ui_usb_state;
+    
+    if(startup_sd_usb_cfg_check_flag == 0)
+    {
+        usb_get_state(&ui_state, &ui_usb_state);
+        USB_PR("%s, ui_state(%d, %d)\n", __func__, ui_state, ui_usb_state);
+
+        startup_sd_usb_cfg_check_flag = 1;
+        if(ui_state != 2)  //not in OFFLINE state
+        {
+            USB_PR("startup check_sd_usb_cfg_func when power up\n");
+            schedule_delayed_work(&check_sd_usb_cfg_work, SD_USB_CFG_CHECK_GAP * HZ);
+        }
+    }
+}
+
+/* restore the initial state for SD card configure file checking */
+void sd_usb_cfg_init(void)
+{
+    sd_usb_cfg_check_flag = 0;
+    sd_usb_cfg_check_number = 0;
+}
+
+/*
+    add_flag: 1: init delayed work
+              0: cancel delayed work
+*/
+void ms_delay_work_init(int add_flag)
+{
+    static int delay_work_init_flag = 0;
+
+    if(1 == add_flag)
+    {
+        if(0 == delay_work_init_flag)
+        {
+            USB_PR("%s, initialize OK.\n", __func__);
+            delay_work_init_flag = 1;
+            INIT_DELAYED_WORK(&store_file_work, store_file_again_func);
+            INIT_DELAYED_WORK(&check_sd_usb_cfg_work, check_sd_usb_cfg_func);
+            INIT_DELAYED_WORK(&sent_udisk_uevent_work, usb_sent_udisk_uevent_func);
+            /* fixup udisk switch issue */
+            INIT_DELAYED_WORK(&fsg_switch_func, usb_switch_udisk_func);
+        }
+        else
+        {
+            USB_PR("%s, already initialized.\n", __func__);
+        }
+    }
+    else
+    {
+        if(1 == delay_work_init_flag)
+        {
+            USB_PR("%s, cancel OK.\n", __func__);
+            delay_work_init_flag = 0;
+        	cancel_delayed_work_sync(&store_file_work);
+        	cancel_delayed_work_sync(&check_sd_usb_cfg_work);
+            cancel_delayed_work_sync(&sent_udisk_uevent_work);
+            /* fixup udisk switch issue */
+            cancel_delayed_work_sync(&fsg_switch_func);
+        }
+        else
+        {
+            USB_PR("%s, already cancelled.\n", __func__);
+        }
+    }
+}
+
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 
 static DEVICE_ATTR(file, 0444, show_file, store_file);
 
@@ -2786,6 +3481,10 @@ fsg_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct fsg_dev	*fsg = func_to_dev(f);
 	int			i;
 	struct lun		*curlun;
+    
+    #ifdef CONFIG_USB_AUTO_INSTALL
+    cancel_delayed_work_sync(&store_file_work);
+    #endif
 
 	DBG(fsg, "fsg_function_unbind\n");
 	clear_bit(REGISTERED, &fsg->atomic_bitflags);
@@ -2951,6 +3650,68 @@ fsg_function_bind(struct usb_configuration *c, struct usb_function *f)
 
 	/* Tell the thread to start working */
 	wake_up_process(fsg->thread_task);
+
+#ifdef CONFIG_USB_AUTO_INSTALL
+    {
+        ssize_t ret_val;
+        u16 curr_pid;
+        curr_pid = android_get_product_id();
+
+        USB_PR("curr_pid=0x%x\n", curr_pid);
+
+        if((curr_usb_pid_ptr->cdrom_pid == curr_pid) || 
+           ((curr_usb_pid_ptr->norm_pid == curr_pid)&&(0 == udisk_in_norm)) ||
+           (curr_usb_pid_ptr->auth_pid == curr_pid))
+        {
+#if 0
+            if(usb_para_info.usb_pid_index == NORM_INDEX)
+            {
+                USB_PR("CDROM is disabled for CTS(usb_para_info.usb_pid_index=%d)\n", usb_para_info.usb_pid_index);
+            }
+            else
+#endif
+            {
+                USB_PR("current usb composition including CDROM, curr_pid=0x%x\n", curr_pid);
+                /* add new pid config for google */
+                store_file_lun_index = 0;
+                curlun = &fsg->luns[0];	
+                ret_val = store_file(&curlun->dev, &dev_attr_file, CDROM_PATH_FILE, strlen(CDROM_PATH_FILE));
+                USB_PR("store_file set to CDROM, ret_val = %d\n", ret_val);
+                /* If failed, initiate the delay work */
+                if(ret_val < 0)
+                {
+                    store_file_number = 0;
+                    USB_PR("Initiate delay work for store_file()\n");
+                    schedule_delayed_work(&store_file_work, STORE_FILE_DELAY * HZ);
+                }
+            }
+        }
+        else if(curr_usb_pid_ptr->udisk_pid == curr_pid)
+        {
+            ret_val = store_file(&curlun->dev, &dev_attr_file, UDISK_PATH_FILE, strlen(UDISK_PATH_FILE));
+            USB_PR("store_file set to UDISK, ret_val = %d\n", ret_val);
+        }
+        /* add new pid config for google */
+        else if((GOOGLE_INDEX == usb_para_info.usb_pid_index) && (2 == fsg->nluns))
+        {
+            store_file_lun_index = 1;
+            curlun = &fsg->luns[1];	
+            ret_val = store_file(&curlun->dev, &dev_attr_file, CDROM_PATH_FILE, strlen(CDROM_PATH_FILE));
+            if(ret_val < 0)
+            {
+                store_file_number = 0;
+                USB_PR("Initiate delay work for store_file()\n");
+                schedule_delayed_work(&store_file_work, STORE_FILE_DELAY * HZ);
+            }
+        }
+
+        /*delete code */
+
+    }
+
+    USB_PR("%s finished\n", __func__);
+#endif  /* CONFIG_USB_AUTO_INSTALL */
+
 	return 0;
 
 autoconf_fail:
@@ -2971,17 +3732,35 @@ static int fsg_function_set_alt(struct usb_function *f,
 	struct fsg_dev	*fsg = func_to_dev(f);
 	DBG(fsg, "fsg_function_set_alt intf: %d alt: %d\n", intf, alt);
 	fsg->new_config = 1;
+//delay this memory realloc to be in the context of usb_mass_storag thread	
+#ifndef CONFIG_HUAWEI_KERNEL
 	do_set_interface(fsg, 0);
+#endif
 	raise_exception(fsg, FSG_STATE_CONFIG_CHANGE);
 	return 0;
 }
+
+#ifdef CONFIG_USB_AUTO_INSTALL
+extern int g_android_switch_flag;
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 
 static void fsg_function_disable(struct usb_function *f)
 {
 	struct fsg_dev	*fsg = func_to_dev(f);
 	DBG(fsg, "fsg_function_disable\n");
+
+#ifdef CONFIG_USB_AUTO_INSTALL
+	if (fsg->new_config && g_android_switch_flag ==0 ) {
+#ifndef CONFIG_HUAWEI_KERNEL
+//delay the memory release to be in the context of usb_mass_storag thread
+		do_set_interface(fsg, -1);
+#endif		
+	}
+#else
 	if (fsg->new_config)
 		do_set_interface(fsg, -1);
+#endif
+
 	fsg->new_config = 0;
 	raise_exception(fsg, FSG_STATE_CONFIG_CHANGE);
 }
@@ -3004,6 +3783,10 @@ int mass_storage_function_add(struct usb_composite_dev *cdev,
 	kref_init(&fsg->ref);
 	init_completion(&fsg->thread_notifier);
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+    the_fsg->vendor = "";
+    the_fsg->product= get_product_name();
+#endif  /* CONFIG_USB_AUTO_INSTALL */
 	the_fsg->buf_size = BULK_BUFFER_SIZE;
 	the_fsg->sdev.name = DRIVER_NAME;
 	the_fsg->sdev.print_name = print_switch_name;

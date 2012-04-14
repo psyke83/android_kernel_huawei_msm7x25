@@ -351,7 +351,11 @@ static int mmc_sdio_init_card(struct mmc_host *host, u32 ocr,
 		 */
 		mmc_set_clock(host, 50000000);
 	} else {
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		mmc_set_clock(host, 25000000);
+#else
 		mmc_set_clock(host, card->cis.max_dtr);
+#endif
 	}
 
 	/*
@@ -687,7 +691,11 @@ int sdio_reset_comm(struct mmc_card *card)
 		 */
 		mmc_set_clock(host, 50000000);
 	} else {
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		mmc_set_clock(host, 25000000);
+#else
 		mmc_set_clock(host, card->cis.max_dtr);
+#endif
 	}
 
 	err = sdio_enable_wide(card);

@@ -42,6 +42,8 @@
 						struct mdp_overlay)
 #define MSMFB_OVERLAY_PLAY_ENABLE     _IOW(MSMFB_IOCTL_MAGIC, 141, unsigned int)
 
+#define MSMFB_SET_DISPLAY_CONTRAST _IOW(MSMFB_IOCTL_MAGIC, 135, unsigned int)
+
 #define MDP_IMGTYPE2_START 0x10000
 
 enum {

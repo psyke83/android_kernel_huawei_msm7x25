@@ -165,6 +165,21 @@ void bluesleep_sleep_wakeup(void)
 		/*Activating UART */
 		hsuart_power(1);
 	}
+    #ifdef HUAWEI_BCM4329
+    else
+    {
+        /*Tx idle, Rx busy, we must also make host_wake asserted, that is low
+        * 1 means bt chip can sleep, in bluesleep.c
+        */
+        if(1 == gpio_get_value(bsi->host_wake))
+        {
+            printk(KERN_ERR "-bluesleep_sleep_wakeup wakeup bt chip\n");
+            /*0 means wakup bt chip */
+            gpio_set_value(bsi->ext_wake, 0);  
+            mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
+        } 
+    }
+    #endif
 }
 
 /**
@@ -346,9 +361,15 @@ static int bluesleep_start(void)
 
 	/* assert BT_WAKE */
 	gpio_set_value(bsi->ext_wake, 0);
+#ifndef HUAWEI_BCM4329
+    retval = request_irq(bsi->host_wake_irq, bluesleep_hostwake_isr,
+                IRQF_DISABLED | IRQF_TRIGGER_FALLING,
+                "bluetooth hostwake", NULL);
+#else
 	retval = request_irq(bsi->host_wake_irq, bluesleep_hostwake_isr,
-				IRQF_DISABLED | IRQF_TRIGGER_FALLING,
+				IRQF_DISABLED | IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
 				"bluetooth hostwake", NULL);
+#endif
 	if (retval  < 0) {
 		BT_ERR("Couldn't acquire BT_HOST_WAKE IRQ");
 		goto fail;

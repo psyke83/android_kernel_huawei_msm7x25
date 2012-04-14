@@ -23,21 +23,63 @@
 #include <linux/leds.h>
 
 #include <mach/pmic.h>
+#include <asm/mach-types.h>
 
+#ifdef CONFIG_HUAWEI_APPS
+#define MAX_KEYPAD_BL_LEVEL	64
+#else
 #define MAX_KEYPAD_BL_LEVEL	16
-
+#endif
+extern atomic_t kp_suspend_flag;
+atomic_t button_flag = ATOMIC_INIT(0);			/* "0" means turn 0ff */
 static void msm_keypad_bl_led_set(struct led_classdev *led_cdev,
 	enum led_brightness value)
 {
-	int ret;
+    int ret = 0;
 
-	ret = pmic_set_led_intensity(LED_KEYPAD, value / MAX_KEYPAD_BL_LEVEL);
-	if (ret)
-		dev_err(led_cdev->dev, "can't set keypad backlight\n");
+    if( machine_is_msm7x25_u8110() )
+    {
+        /* there is nothing to do */
+    }
+    else if( machine_is_msm7x25_u8100() || machine_is_msm7x25_u8105() \
+             || machine_is_msm7x25_u8107() || machine_is_msm7x25_u8109() )
+    {
+        ret = pmic_set_led_intensity(LED_LCD, value / LED_FULL);
+    }
+    else if ( machine_is_msm7x25_u8150() || machine_is_msm7x25_c8150() || machine_is_msm7x25_u8159() \
+			|| machine_is_msm7x25_u8160() || machine_is_msm7x25_u8130() || machine_is_msm7x25_c8510() \
+	)
+	{
+		ret = pmic_set_led_intensity(LED_KEYPAD, 0);		/* never turn on */
+		if ( !atomic_read(&kp_suspend_flag) ) 
+		{
+ 			ret = pmic_set_led_intensity(LED_LCD, value / LED_FULL);
+		}
+		if (LED_FULL == value) {
+			atomic_set(&button_flag, 1);
+		} else {
+			atomic_set(&button_flag, 0);
+		}
+	}
+    else if( machine_is_msm7x25_u8300() )
+    {
+        ret = pmic_set_led_intensity(LED_KEYPAD, value/LED_HALF);
+    }
+    else if( machine_is_msm7x25_u8350() )
+    {
+        ret = pmic_set_led_intensity(LED_KEYPAD, value/LED_HALF);
+    }
+    else
+    {
+        ret = pmic_set_led_intensity(LED_KEYPAD, value / LED_FULL);
+    }     
+	
+    if (ret)
+        dev_err(led_cdev->dev, "can't set keypad backlight\n");
 }
 
 static struct led_classdev msm_kp_bl_led = {
-	.name			= "keyboard-backlight",
+	.name			= "button-backlight",
 	.brightness_set		= msm_keypad_bl_led_set,
 	.brightness		= LED_OFF,
 };

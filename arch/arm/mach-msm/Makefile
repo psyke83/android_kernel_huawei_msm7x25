@@ -87,7 +87,21 @@ ifndef CONFIG_PM
 	obj-y += no-pm.o
 endif
 obj-$(CONFIG_MSM_DMA_TEST) += dma_test.o
+
+#add by mzh
+obj-$(CONFIG_HUAWEI_BATTERY) += huawei_battery.o 
+
+obj-$(CONFIG_HUAWEI_U8220_KEYBOARD) += keypad_linux_u8220.o
+#obj-$(CONFIG_HUAWEI_U8220_JOGBALL) +=jogball_device.o 
+obj-$(CONFIG_HUAWEI_JOGBALL) +=jogball_device.o 
+
+obj-$(CONFIG_HUAWEI_MSM_VIBRATOR) += msm_vibrator.o huawei_serial_server.o kernel_msm_msg.o
+
+#/*add code to support JOY(U8120) */
+obj-$(CONFIG_HUAWEI_FEATURE_OFN_KEY) += msm_ofn_key.o
+
 obj-$(CONFIG_SURF_FFA_GPIO_KEYPAD) += keypad-surf-ffa.o
+obj-$(CONFIG_HUAWEI_GPIO_KEYPAD) += Keypad-huawei.o
 
 obj-$(CONFIG_ARCH_MSM7X01A) += board-halibut.o devices-msm7x01a.o
 obj-$(CONFIG_MACH_TROUT) += board-trout.o board-trout-gpio.o
@@ -113,7 +127,8 @@ obj-$(CONFIG_TROUT_PWRSINK) += htc_pwrsink.o
 obj-$(CONFIG_ARCH_MSM7X27) += board-msm7x27.o devices-msm7x27.o
 obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30.o devices-msm7x30.o
 obj-$(CONFIG_ARCH_MSM7X30) += clock-7x30.o acpuclock-7x30.o
-obj-$(CONFIG_ARCH_MSM7X25) += board-msm7x27.o devices-msm7x25.o
+#obj-$(CONFIG_ARCH_MSM7X25) += board-msm7x27.o devices-msm7x25.o
+obj-$(CONFIG_ARCH_MSM7X25) += board-msm7x25.o devices-msm7x25.o
 
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire.o board-sapphire-gpio.o
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire-keypad.o board-sapphire-panel.o
@@ -130,6 +145,12 @@ obj-$(CONFIG_MSM_NPA) += npa.o npa_resources.o msm_pm_qos.o msm_reqs.o
 obj-$(CONFIG_MSM_NPA_REMOTE) += npa_remote.o
 obj-$(CONFIG_MSM_NPA_REMOTE_ONCRPC) += npa_remote_rpc_client.o
 obj-$(CONFIG_ARCH_MSM7X30) += spm.o
+
+obj-$(CONFIG_HUAWEI_KEY_TEST) += huawei_key_test.o
+
+obj-$(CONFIG_HUAWEI_RGB_KEY_LIGHT) += RGB_led.o
+
+obj-$(CONFIG_HUAWEI_SMEM_SLEEP_LOG) += smem_sleep_log.o
 
 obj-$(CONFIG_SMMU)		+= smmu_driver.o smmu_driver_enum.o
 obj-$(CONFIG_SMMU_8X60)		+= board-msm8x60-smmu.o

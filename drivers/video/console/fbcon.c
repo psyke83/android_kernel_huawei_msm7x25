@@ -80,7 +80,9 @@
 #include <asm/system.h>
 
 #include "fbcon.h"
-
+#ifdef CONFIG_HUAWEI_KERNEL
+extern int from_msm_fb_register(void);
+#endif
 #ifdef FBCONDEBUG
 #  define DPRINTK(fmt, args...) printk(KERN_DEBUG "%s: " fmt, __func__ , ## args)
 #else
@@ -367,6 +369,7 @@ static void fbcon_update_softback(struct vc_data *vc)
 
 static void fb_flashcursor(struct work_struct *work)
 {
+#ifndef CONFIG_HUAWEI_KERNEL
 	struct fb_info *info = container_of(work, struct fb_info, queue);
 	struct fbcon_ops *ops = info->fbcon_par;
 	struct display *p;
@@ -391,7 +394,9 @@ static void fb_flashcursor(struct work_struct *work)
 		CM_ERASE : CM_DRAW;
 	ops->cursor(vc, info, mode, softback_lines, get_color(vc, info, c, 1),
 		    get_color(vc, info, c, 0));
-	release_console_sem();
+
+    release_console_sem();
+#endif
 }
 
 static void cursor_timer_handler(unsigned long dev_addr)
@@ -621,7 +626,11 @@ static void fbcon_prepare_logo(struct vc_data *vc, struct fb_info *info,
 
 	if (CON_IS_VISIBLE(vc) && vc->vc_mode == KD_TEXT) {
 		fbcon_clear_margins(vc, 0);
-		update_screen(vc);
+/* Call from msm_fb_register() ,don't update LCD*/
+#ifdef CONFIG_HUAWEI_KERNEL
+        if(!from_msm_fb_register())
+#endif        
+        	update_screen(vc);
 	}
 
 	if (save) {
@@ -1283,6 +1292,7 @@ static void fbcon_clear_margins(struct vc_data *vc, int bottom_only)
 
 static void fbcon_cursor(struct vc_data *vc, int mode)
 {
+#if 0
 	struct fb_info *info = registered_fb[con2fb_map[vc->vc_num]];
 	struct fbcon_ops *ops = info->fbcon_par;
 	int y;
@@ -1308,7 +1318,10 @@ static void fbcon_cursor(struct vc_data *vc, int mode)
 
 	ops->cursor(vc, info, mode, y, get_color(vc, info, c, 1),
 		    get_color(vc, info, c, 0));
+    vbl_cursor_cnt = CURSOR_DRAW_DELAY;
+#else    
 	vbl_cursor_cnt = CURSOR_DRAW_DELAY;
+#endif
 }
 
 static int scrollback_phys_max = 0;

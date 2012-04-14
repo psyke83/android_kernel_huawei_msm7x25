@@ -2270,6 +2270,9 @@ static void usb_switch_composition(unsigned short pid)
 	usb_uninit(ui);
 	usb_set_composition(pid);
 	usb_configure_device_descriptor(ui);
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
+	usb_reset(ui);
+#endif
 
 	/* initialize functions */
 	for (i = 0; i < ui->num_funcs; i++) {

@@ -526,6 +526,11 @@ else
 KBUILD_CFLAGS	+= -O2
 endif
 
+ifeq ($(ENABLE_BCM_4329),true)
+KBUILD_CFLAGS += -DHUAWEI_BCM4329
+endif
+
+KBUILD_CFLAGS	+= -DHUAWEI_KERNEL_VERSION=\"$(HUAWEI_KERNEL_VERSION)\"
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
 ifneq ($(CONFIG_FRAME_WARN),0)

@@ -379,7 +379,12 @@ static inline void hci_sched_cmd(struct hci_dev *hdev)
 
 static inline void hci_sched_rx(struct hci_dev *hdev)
 {
+#ifdef CONFIG_HUAWEI_KERNEL
+    /* Change to HI_SOFTIRQ to schedule */
+	tasklet_hi_schedule(&hdev->rx_task);
+#else
 	tasklet_schedule(&hdev->rx_task);
+#endif
 }
 
 static inline void hci_sched_tx(struct hci_dev *hdev)

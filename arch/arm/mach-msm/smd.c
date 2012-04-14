@@ -803,6 +803,11 @@ static int smd_alloc_v1(struct smd_channel *ch)
 static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm)
 {
 	struct smd_channel *ch;
+	
+#ifdef CONFIG_HUAWEI_KERNEL
+	uint32_t *smd_ver;
+	int  ret;
+#endif
 
 	ch = kzalloc(sizeof(struct smd_channel), GFP_KERNEL);
 	if (ch == 0) {
@@ -811,10 +816,23 @@ static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm)
 	}
 	ch->n = alloc_elm->cid;
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	smd_ver = smem_alloc(SMEM_VERSION_SMD, 32 * sizeof(uint32_t));
+	if (smd_ver && ((smd_ver[VERSION_MODEM] >> 16) >= 1))
+		ret  = smd_alloc_v2(ch);
+	else
+		ret = smd_alloc_v1(ch);
+
+	if( ret < 0 ){
+		kfree(ch);
+		return -1;
+	}
+#else
 	if (smd_alloc_v2(ch) && smd_alloc_v1(ch)) {
 		kfree(ch);
 		return -1;
 	}
+#endif
 
 	ch->fifo_mask = ch->fifo_size - 1;
 	ch->type = SMD_CHANNEL_TYPE(alloc_elm->type);

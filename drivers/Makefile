@@ -112,3 +112,5 @@ obj-$(CONFIG_VLYNQ)		+= vlynq/
 obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
 obj-y				+= ieee802154/
+obj-$(CONFIG_HUAWEI_CRASH_DUMP) += crash/
+obj-$(CONFIG_HUAWEI_HW_DEV_DCT) += devdetect/

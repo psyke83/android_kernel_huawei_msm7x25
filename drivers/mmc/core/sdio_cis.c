@@ -21,6 +21,9 @@
 #include <linux/mmc/sdio_func.h>
 
 #include <asm/mach-types.h>
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+#include <linux/delay.h>
+#endif
 
 #include "sdio_cis.h"
 #include "sdio_ops.h"
@@ -218,6 +221,9 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 		else
 			fn = 0;
 
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		mdelay(1);
+#endif
 		ret = mmc_io_rw_direct(card, 0, 0,
 			SDIO_FBR_BASE(fn) + SDIO_FBR_CIS + i, 0, &x);
 		if (ret)
@@ -235,6 +241,9 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 	do {
 		unsigned char tpl_code, tpl_link;
 
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		mdelay(1);
+#endif
 		ret = mmc_io_rw_direct(card, 0, 0, ptr++, 0, &tpl_code);
 		if (ret)
 			break;
@@ -251,7 +260,9 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 			else
 				continue;
 		}
-
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		mdelay(1);
+#endif
 		ret = mmc_io_rw_direct(card, 0, 0, ptr++, 0, &tpl_link);
 		if (ret)
 			break;
@@ -265,6 +276,9 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 			return -ENOMEM;
 
 		for (i = 0; i < tpl_link; i++) {
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+		        mdelay(1);
+#endif                
 			ret = mmc_io_rw_direct(card, 0, 0,
 					       ptr + i, 0, &this->data[i]);
 			if (ret)

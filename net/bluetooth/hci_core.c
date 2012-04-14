@@ -49,6 +49,9 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+#include <mach/msm_serial_hs.h> 
+#endif
 static void hci_cmd_task(unsigned long arg);
 static void hci_rx_task(unsigned long arg);
 static void hci_tx_task(unsigned long arg);
@@ -1604,6 +1607,9 @@ static void hci_cmd_task(unsigned long arg)
 
 	if (!atomic_read(&hdev->cmd_cnt) && time_after(jiffies, hdev->cmd_last_tx + HZ)) {
 		BT_ERR("%s command tx timeout", hdev->name);
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+        hci_trigger_hs_port_tx_ready();
+#endif
 		atomic_set(&hdev->cmd_cnt, 1);
 	}
 

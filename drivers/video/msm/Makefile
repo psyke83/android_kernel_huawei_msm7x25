@@ -90,6 +90,23 @@ obj-$(CONFIG_FB_MSM_LCDC_SHARP_WVGA_PT) += lcdc_sharp_wvga_pt.o
 obj-$(CONFIG_FB_MSM_HDMI_ADV7520_PANEL) += adv7520.o
 obj-$(CONFIG_FB_MSM_LCDC_ST15_WXGA) += lcdc_st15.o
 
+ifeq ($(CONFIG_FB_MSM_LCDC_AUTO_DETECT),y)
+obj-y += lcdc_huawei_config.o
+obj-y += lcdc_ili9325_qvga.o
+obj-y += lcdc_s6d74a0_hvga.o
+obj-y += lcdc_spfd5408b_qvga.o
+obj-y += lcdc_hx8357a_qvga.o
+obj-y += lcdc_ili9325c_qvga.o
+obj-y += lcdc_hx8347d_qvga.o
+obj-y += lcdc_ili9331b.o
+obj-y += lcdc_ili9481d_hvga.o
+obj-y += lcdc_hx8357b_hvga.o
+obj-y += lcdc_hx8368a_qvga.o
+obj-y += huawei_backlight.o
+endif
+obj-y += lcdc_hx8357a_hvga.o
+obj-y += lcdc_s6d05a0_hvga.o
+obj-y += lcd_hw_debug.o
 obj-$(CONFIG_FB_MSM_TVOUT_NTSC) += tv_ntsc.o
 obj-$(CONFIG_FB_MSM_TVOUT_PAL) += tv_pal.o
 

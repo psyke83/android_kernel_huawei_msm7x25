@@ -115,10 +115,13 @@ static int verify_venc_cmd(struct msm_adsp_module *module,
 		if (cmd_size < sizeof(videnc_cmd_dis_cfg))
 			return -1;
 		break;
-	case VIDENC_CMD_VENC_CLOCK:
+
+	/* Not support for this code*/
+	/*case VIDENC_CMD_VENC_CLOCK:
 		if (cmd_size < sizeof(struct videnc_cmd_venc_clock))
 			return -1;
-		break;
+		break;*/
+
 	case VIDENC_CMD_CFG:
 		if (cmd_size < sizeof(videnc_cmd_cfg))
 			return -1;

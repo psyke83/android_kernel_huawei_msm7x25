@@ -40,7 +40,6 @@
 #define NUM_WB_EXP_NEUTRAL_REGION_LINES 4
 #define NUM_WB_EXP_STAT_OUTPUT_BUFFERS  3
 #define NUM_AUTOFOCUS_MULTI_WINDOW_GRIDS 16
-#define NUM_STAT_OUTPUT_BUFFERS      3
 #define NUM_AF_STAT_OUTPUT_BUFFERS      3
 
 enum msm_queue {
@@ -54,29 +53,16 @@ enum vfe_resp_msg {
 	VFE_EVENT,
 	VFE_MSG_GENERAL,
 	VFE_MSG_SNAPSHOT,
-	VFE_MSG_OUTPUT_P,   /* preview (continuous mode ) */
-	VFE_MSG_OUTPUT_T,   /* thumbnail (snapshot mode )*/
-	VFE_MSG_OUTPUT_S,   /* main image (snapshot mode )*/
-	VFE_MSG_OUTPUT_V,   /* video   (continuous mode ) */
-	VFE_MSG_STATS_AEC,
+	VFE_MSG_OUTPUT1,
+	VFE_MSG_OUTPUT2,
 	VFE_MSG_STATS_AF,
-	VFE_MSG_STATS_AWB,
-	VFE_MSG_STATS_RS,
-	VFE_MSG_STATS_CS,
-	VFE_MSG_STATS_IHIST,
-	VFE_MSG_STATS_SKIN,
-	VFE_MSG_STATS_WE, /* AEC + AWB */
+	VFE_MSG_STATS_WE,
 };
-
-#define VFE31_OUTPUT_MODE_PT (0x1 << 0)
-#define VFE31_OUTPUT_MODE_S (0x1 << 1)
-#define VFE31_OUTPUT_MODE_V (0x1 << 2)
 
 struct msm_vfe_phy_info {
 	uint32_t sbuf_phy;
 	uint32_t y_phy;
 	uint32_t cbcr_phy;
-	uint8_t  output_id; /* VFE31_OUTPUT_MODE_PT/S/V */
 };
 
 struct msm_vfe_resp {
@@ -89,10 +75,8 @@ struct msm_vfe_resp {
 
 struct msm_vfe_callback {
 	void (*vfe_resp)(struct msm_vfe_resp *,
-		enum msm_queue, void *syncdata,
-		gfp_t gfp);
-	void* (*vfe_alloc)(int, void *syncdata, gfp_t gfp);
-	void (*vfe_free)(void *ptr);
+		enum msm_queue, void *syncdata);
+	void* (*vfe_alloc)(int, void *syncdata);
 };
 
 struct msm_camvfe_fn {
@@ -110,53 +94,34 @@ struct msm_sensor_ctrl {
 	int (*s_config)(void __user *);
 };
 
-/* this structure is used in kernel */
-struct msm_queue_cmd {
-	struct list_head list_config;
-	struct list_head list_control;
-	struct list_head list_frame;
-	struct list_head list_pict;
-	enum msm_queue type;
-	void *command;
-	int on_heap;
-	struct timespec ts;
-};
-
-struct msm_device_queue {
-	struct list_head list;
-	spinlock_t lock;
-	wait_queue_head_t wait;
-	int max;
-	int len;
-	const char *name;
-};
-
 struct msm_sync {
-	/* These two queues are accessed from a process context only
-	 * They contain pmem descriptors for the preview frames and the stats
-	 * coming from the camera sensor.
-	*/
-	struct hlist_head pmem_frames;
-	struct hlist_head pmem_stats;
+	/* These two queues are accessed from a process context only. */
+	struct hlist_head frame; /* most-frequently accessed */
+	struct hlist_head stats;
 
 	/* The message queue is used by the control thread to send commands
 	 * to the config thread, and also by the DSP to send messages to the
 	 * config thread.  Thus it is the only queue that is accessed from
 	 * both interrupt and process context.
 	 */
-	struct msm_device_queue event_q;
+	spinlock_t msg_event_q_lock;
+	struct list_head msg_event_q;
+	wait_queue_head_t msg_event_wait;
 
 	/* This queue contains preview frames. It is accessed by the DSP (in
 	 * in interrupt context, and by the frame thread.
 	 */
-	struct msm_device_queue frame_q;
+	spinlock_t prev_frame_q_lock;
+	struct list_head prev_frame_q;
+	wait_queue_head_t prev_frame_wait;
 	int unblock_poll_frame;
 
 	/* This queue contains snapshot frames.  It is accessed by the DSP (in
 	 * interrupt context, and by the control thread.
 	 */
-	struct msm_device_queue pict_q;
-	int get_pic_abort;
+	spinlock_t pict_frame_q_lock;
+	struct list_head pict_frame_q;
+	wait_queue_head_t pict_frame_wait;
 
 	struct msm_camera_sensor_info *sdata;
 	struct msm_camvfe_fn vfefn;
@@ -166,10 +131,9 @@ struct msm_sync {
 	uint8_t opencnt;
 	void *cropinfo;
 	int  croplen;
-
-	uint32_t pp_mask;
-	struct msm_queue_cmd *pp_prev;
-	struct msm_queue_cmd *pp_snap;
+	uint32_t pict_pp;
+	struct mutex pict_pp_lock;
+	uint8_t pp_sync_flag;
 
 	const char *apps_id;
 
@@ -190,18 +154,26 @@ struct msm_device {
 	atomic_t opened;
 };
 
+struct msm_control_device_queue {
+	spinlock_t ctrl_status_q_lock;
+	struct list_head ctrl_status_q;
+	wait_queue_head_t ctrl_status_wait;
+};
+
 struct msm_control_device {
 	struct msm_device *pmsm;
-
-	/* Used for MSM_CAM_IOCTL_CTRL_CMD_DONE responses */
-	uint8_t ctrl_data[50];
-	struct msm_ctrl_cmd ctrl;
-	struct msm_queue_cmd qcmd;
 
 	/* This queue used by the config thread to send responses back to the
 	 * control thread.  It is accessed only from a process context.
 	 */
-	struct msm_device_queue ctrl_q;
+	struct msm_control_device_queue ctrl_q;
+};
+
+/* this structure is used in kernel */
+struct msm_queue_cmd {
+	struct list_head list;
+	enum msm_queue type;
+	void *command;
 };
 
 struct register_address_value_pair {
@@ -211,30 +183,30 @@ struct register_address_value_pair {
 
 struct msm_pmem_region {
 	struct hlist_node list;
+	int type;
+	void *vaddr;
 	unsigned long paddr;
 	unsigned long len;
 	struct file *file;
-	struct msm_pmem_info info;
+	uint32_t y_off;
+	uint32_t cbcr_off;
+	int fd;
+	uint8_t  active;
 };
 
 struct axidata {
 	uint32_t bufnum1;
 	uint32_t bufnum2;
-	uint32_t bufnum3;
 	struct msm_pmem_region *region;
 };
 
 #ifdef CONFIG_MSM_CAMERA_FLASH
-	int msm_camera_flash_set_led_state(
-		struct msm_camera_sensor_flash_data *fdata,
-		unsigned led_state);
+int msm_camera_flash_set_led_state(unsigned led_state);
 #else
-	static inline int msm_camera_flash_set_led_state(
-		struct msm_camera_sensor_flash_data *fdata,
-		unsigned led_state)
-	{
-		return -ENOTSUPP;
-	}
+static inline int msm_camera_flash_set_led_state(unsigned led_state)
+{
+	return -ENOTSUPP;
+}
 #endif
 
 /* Below functions are added for V4L2 kernel APIs */
@@ -267,20 +239,6 @@ enum msm_camio_clk_type {
 	CAMIO_VFE_CLK,
 	CAMIO_VFE_AXI_CLK,
 
-	CAMIO_VFE_CAMIF_CLK,
-	CAMIO_VFE_PBDG_CLK,
-	CAMIO_CAM_MCLK_CLK,
-	CAMIO_CAMIF_PAD_PBDG_CLK,
-
-	CAMIO_CSI0_VFE_CLK,
-	CAMIO_CSI1_VFE_CLK,
-	CAMIO_VFE_PCLK,
-
-	CAMIO_CSI_SRC_CLK,
-	CAMIO_CSI0_CLK,
-	CAMIO_CSI1_CLK,
-	CAMIO_CSI0_PCLK,
-	CAMIO_CSI1_PCLK,
 	CAMIO_MAX_CLK
 };
 
@@ -325,9 +283,7 @@ int  msm_camio_clk_enable(enum msm_camio_clk_type clk);
 int  msm_camio_clk_disable(enum msm_camio_clk_type clk);
 int  msm_camio_clk_config(uint32_t freq);
 void msm_camio_clk_rate_set(int rate);
-void msm_camio_clk_rate_set_2(struct clk *clk, int rate);
 void msm_camio_clk_axi_rate_set(int rate);
-void msm_disable_io_gpio_clk(struct platform_device *);
 
 void msm_camio_camif_pad_reg_reset(void);
 void msm_camio_camif_pad_reg_reset_2(void);
@@ -338,15 +294,19 @@ void msm_camio_clk_sel(enum msm_camio_clk_src_type);
 void msm_camio_disable(struct platform_device *);
 int msm_camio_probe_on(struct platform_device *);
 int msm_camio_probe_off(struct platform_device *);
-int msm_camio_csi_config(struct msm_camera_csi_params *csi_params);
-int add_axi_qos(void);
+
+
+int request_axi_qos(uint32_t freq);
 int update_axi_qos(uint32_t freq);
 void release_axi_qos(void);
-void msm_io_w(u32 data, void __iomem *addr);
-void msm_io_w_mb(u32 data, void __iomem *addr);
-u32 msm_io_r(void __iomem *addr);
-u32 msm_io_r_mb(void __iomem *addr);
-void msm_io_dump(void __iomem *addr, int size);
-void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len);
+#ifndef CONFIG_HUAWEI_CAMERA
+int32_t mt9t013_probe_init(void *, void *);
+#endif
+#ifdef CONFIG_HUAWEI_CAMERA_SENSOR_OV3647
+int32_t ov3647_probe_init(void *, void *);
+#endif //CONFIG_HUAWEI_CAMERA_SENSOR_OV3647
+#ifdef CONFIG_HUAWEI_CAMERA_SENSOR_OV7690
+int32_t ov7690_probe_init(void *, void *);
+#endif //CONFIG_HUAWEI_CAMERA_SENSOR_OV7690
 
 #endif

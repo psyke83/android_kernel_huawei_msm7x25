@@ -238,6 +238,10 @@ struct msmsdcc_host {
 	unsigned int		oldstat;
 
 	struct msmsdcc_dma_data	dma;
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+	unsigned int		pre_cmd_with_data;
+	u32			saved_irq0mask;/* MMCIMASK0 reg value */
+#endif
 	struct msmsdcc_pio_data	pio;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND

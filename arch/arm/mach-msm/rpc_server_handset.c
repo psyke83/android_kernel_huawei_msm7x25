@@ -27,12 +27,24 @@
 #include <mach/board.h>
 #include <mach/rpc_server_handset.h>
 
+//#include "keypad-surf-ffa.h"
+
+#include "socinfo.h"
+
+
+#ifdef CONFIG_HUAWEI_KERNEL
+#include <linux/wakelock.h>
+#endif
+
 #define DRIVER_NAME	"msm-handset"
 
 #define HS_SERVER_PROG 0x30000062
 #define HS_SERVER_VERS 0x00010001
 
 #define HS_RPC_PROG 0x30000091
+
+#define HS_RPC_VERS_1 0x00010001
+#define HS_RPC_VERS_2 0x00020001
 
 #define HS_SUBSCRIBE_SRVC_PROC 0x03
 #define HS_REPORT_EVNT_PROC    0x05
@@ -49,6 +61,11 @@
 #define HS_HEADSET_SWITCH_K	0x84
 #define HS_HEADSET_SWITCH_2_K	0xF0
 #define HS_HEADSET_SWITCH_3_K	0xF1
+#ifdef CONFIG_HUAWEI_KERNEL
+#define HS_PREVIOUS_K   0xB4
+#define HS_NEXT_K       0xB5
+#endif
+
 #define HS_REL_K		0xFF	/* key release */
 
 #define KEY(hs_key, input_key) ((hs_key << 24) | input_key)
@@ -155,6 +172,10 @@ static const uint32_t hs_key_map[] = {
 	KEY(HS_HEADSET_SWITCH_K, KEY_MEDIA),
 	KEY(HS_HEADSET_SWITCH_2_K, KEY_VOLUMEUP),
 	KEY(HS_HEADSET_SWITCH_3_K, KEY_VOLUMEDOWN),
+#ifdef CONFIG_HUAWEI_KERNEL
+    KEY(HS_PREVIOUS_K, KEY_PREVIOUSSONG),
+    KEY(HS_NEXT_K,         KEY_NEXTSONG),
+#endif
 	0
 };
 
@@ -177,6 +198,11 @@ struct msm_handset {
 
 static struct msm_rpc_client *rpc_client;
 static struct msm_handset *hs;
+
+#ifdef CONFIG_HUAWEI_KERNEL
+static struct wake_lock headset_unplug_wake_lock;
+#endif
+
 
 static int hs_find_key(uint32_t hscode)
 {
@@ -227,13 +253,60 @@ static void report_hs_key(uint32_t key_code, uint32_t key_parm)
 
 	switch (key) {
 	case KEY_POWER:
+             break;
 	case KEY_END:
+	
+        #ifndef CONFIG_HUAWEI_APPS
+		input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+        #else  /* CONFIG_HUAWEI_APPS  */
+        input_report_key(hs->ipdev, KEY_POWER, (key_code != HS_REL_K));
+        #endif   /*  CONFIG_HUAWEI_APPS  */
+		break;
 	case KEY_MEDIA:
+#ifdef CONFIG_HUAWEI_KERNEL
+        printk(KERN_ERR "%s: kernel recieve modem linectl hdset key: KEY_MEDIA\n",__func__);
+#endif
+
+
+#ifdef CONFIG_HUAWEI_KERNEL
+        wake_lock_timeout(&headset_unplug_wake_lock, 2*HZ);
+#endif
+
+
+		input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+		break;
 	case KEY_VOLUMEUP:
 	case KEY_VOLUMEDOWN:
 		input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
 		break;
+#ifdef CONFIG_HUAWEI_KERNEL
+    case KEY_PREVIOUSSONG:
+        {
+             printk(KERN_ERR "%s: kernel recieve modem linectl hdset key: KEY_PREVIOUSSONG\n",__func__);
+            input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+            break;
+        }
+    case KEY_NEXTSONG:
+        {
+             printk(KERN_ERR "%s: kernel recieve modem linectl hdset key: KEY_NEXTSONG\n",__func__);
+            input_report_key(hs->ipdev, key, (key_code != HS_REL_K));
+            break;
+        }
+#endif
+        
 	case SW_HEADPHONE_INSERT:
+
+#ifdef CONFIG_HUAWEI_KERNEL
+        printk(KERN_ERR "%s: SW_HEADPHONE_INSERT: key_code = %d\n",__func__, key_code);
+
+        if(key_code == HS_REL_K)
+        {
+            /* add 2s wake lock here to fix issue that time of swtiching audio-output 
+             * is not enough when headset unpluging during incall */
+            wake_lock_timeout(&headset_unplug_wake_lock, 2*HZ);
+        }
+#endif
+
 		report_headset_switch(hs->ipdev, key, (key_code != HS_REL_K));
 		break;
 	case -1:
@@ -463,14 +536,24 @@ static int __devinit hs_rpc_init(void)
 {
 	int rc;
 
+	if (machine_is_msm7x27_surf() || machine_is_msm7x27_ffa() ||
+		machine_is_qsd8x50_surf() || machine_is_qsd8x50_ffa() ||
+		machine_is_msm7x30_surf() || machine_is_msm7x30_ffa() ||
+		machine_is_msm7x25_surf() || machine_is_msm7x25_ffa() ||
+		cpu_is_msm7x25() ) {
+
+#ifdef CONFIG_HUAWEI_KERNEL
+    wake_lock_init(&headset_unplug_wake_lock, WAKE_LOCK_SUSPEND, "headset_unplug_wake_lock");
+#endif
+
 	rc = hs_rpc_cb_init();
 	if (rc) {
 		pr_err("%s: failed to initialize rpc client\n", __func__);
 		return rc;
 	}
-
+	}
 	rc = msm_rpc_create_server(&hs_rpc_server);
-	if (rc)
+	if (rc < 0)
 		pr_err("%s: failed to create rpc server\n", __func__);
 
 	return rc;
@@ -533,6 +616,10 @@ static int __devinit hs_probe(struct platform_device *pdev)
 	input_set_capability(ipdev, EV_KEY, KEY_MEDIA);
 	input_set_capability(ipdev, EV_KEY, KEY_VOLUMEUP);
 	input_set_capability(ipdev, EV_KEY, KEY_VOLUMEDOWN);
+#ifdef CONFIG_HUAWEI_KERNEL
+    input_set_capability(ipdev, EV_KEY, KEY_PREVIOUSSONG);
+    input_set_capability(ipdev, EV_KEY, KEY_NEXTSONG);
+#endif
 	input_set_capability(ipdev, EV_SW, SW_HEADPHONE_INSERT);
 	input_set_capability(ipdev, EV_KEY, KEY_POWER);
 	input_set_capability(ipdev, EV_KEY, KEY_END);

@@ -112,6 +112,9 @@ struct diag_context {
 	unsigned char i_serial_number;
 	char *serial_number;
 	unsigned short  product_id;
+#ifdef CONFIG_HUAWEI_KERNEL
+	int intialized_once;
+#endif
 };
 
 static void usb_config_work_func(struct work_struct *);
@@ -293,6 +296,12 @@ int diag_open(int num_req)
 	struct diag_req_entry *read_entry;
 	int i = 0;
 
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(!ctxt->intialized_once) {
+		printk("%s:empty ep\n",__func__);
+		return -EIO;
+	}
+#endif
 	for (i = 0; i < num_req; i++) {
 		write_entry = diag_alloc_req_entry(ctxt->in, 0, GFP_KERNEL);
 		if (write_entry) {
@@ -338,7 +347,12 @@ void diag_close(void)
 	struct diag_context *ctxt = &_context;
 	struct diag_req_entry *req_entry;
 	/* free write requests */
-
+#ifdef CONFIG_HUAWEI_KERNEL
+	if(!ctxt->intialized_once) {
+		printk("%s: diag not initialized\n",__func__);
+		return;
+	}
+#endif
 	while (!list_empty(&ctxt->dev_write_req_list)) {
 		req_entry = list_entry(ctxt->dev_write_req_list.next,
 				struct diag_req_entry, re_entry);
@@ -550,6 +564,9 @@ int diag_function_add(struct usb_configuration *c,
 	INIT_LIST_HEAD(&dev->dev_read_req_list);
 	INIT_LIST_HEAD(&dev->dev_write_req_list);
 	INIT_WORK(&dev->diag_work, usb_config_work_func);
+#ifdef CONFIG_HUAWEI_KERNEL
+	dev->intialized_once = 1;
+#endif
 	ret = usb_add_function(c, &dev->function);
 	if (ret)
 		goto err1;

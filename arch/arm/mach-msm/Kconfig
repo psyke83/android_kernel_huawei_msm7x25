@@ -300,7 +300,195 @@ config MACH_MSM8X60_FFA
 	help
 	  Support for the Qualcomm MSM8x60 FFA eval board.
 
+# add CONFIG_HUAWEI_KERNEL MACRO define in kernel	
+config MACH_MSM7X25_U8100
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8100"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8105
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8105"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8107
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8107"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8109
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8109"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8109 product.
+
+config MACH_MSM7X25_U8110
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8110"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+# delete U8115 and U8117
+
+config MACH_MSM7X25_U8120
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8120"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U7610
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U7610"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8500
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8500"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_UM840
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 UM840"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8300
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8300"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_U8350
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8350"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8350 product.
+
+config MACH_MSM7X25_U8150
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8150"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8150_EU and U8150_JP product.
+
+config MACH_MSM7X25_U8160
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8160"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8160 product board.
+
+config MACH_MSM7X25_U8130
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8130"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8130 product board.
+
+config MACH_MSM7X25_U8159
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 U8159"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, U8159 JP product.
+
+config MACH_MSM7X25_C8150
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 C8150"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, C8150 CDMA product.
+
+config MACH_MSM7X25_C8500
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 C8500"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_C8600
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 C8600"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_M860
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 M860"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
+
+config MACH_MSM7X25_C8510
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	depends on HUAWEI_KERNEL
+	default y
+	bool "MSM7x25 C8510"
+	help
+	  Support for the Qualcomm MSM7x25 Platform, C8510 product board.
+
 endmenu
+
+config  HUAWEI_KERNEL
+	bool "HUAWEI Product"
+	depends on ARCH_MSM7X25	
+	
 
 config MSM_STACKED_MEMORY
 	bool "Stacked Memory"
@@ -520,6 +708,11 @@ config MSM_JTAG_V7
 	help
           Add additional support for JTAG kernel debugging.
 
+config HUAWEI_SETTING_TIMER_FOR_VIBRATOR_OFF
+	tristate "setting timer for vibrator off"
+	default n
+	help
+	  Say Y here if you want to support setting timer for vibrator off.
 config HTC_HEADSET
 	tristate "HTC 2 Wire detection driver"
 	default n
@@ -965,6 +1158,13 @@ config SURF_FFA_GPIO_KEYPAD
 	help
 	  Select if the GPIO keypad is attached.
 
+config HUAWEI_GPIO_KEYPAD
+	bool "MSM HUAWEI GPIO keypad"
+	depends on INPUT_GPIO = "y"
+	default y
+	help
+	  Select if the GPIO keypad is attached.
+
 config CLOCK_BASED_SLEEP_LIMIT
 	default y
 	bool "Set sleep limitation based on clock usage"
@@ -1024,6 +1224,70 @@ choice
 	config MSM_MEMORY_LOW_POWER_MODE_SUSPEND_DEEP_POWER_DOWN
 		bool "Memory in deep power down"
 endchoice
+
+#add by mzh
+config HUAWEI_BATTERY
+	tristate "huawei_battery_device"
+	default n
+	help
+	  Say Y here if you want to support huawei battery device.
+
+config HUAWEI_EVALUATE_POWER_CONSUMPTION
+	tristate "huawei_evaluate_power_consumption"
+	default n
+	help
+	  Say Y here if you want to support huawei battery device.
+
+config HUAWEI_U8220_KEYBOARD
+	tristate "Huawei 8220 keyboard"	
+	default n
+	help
+	  if Y ,select HUAWEI_U8220_KEYBOARD  
+
+config HUAWEI_MSM_VIBRATOR
+	tristate "Huawei 8220 vibrator"	
+	default n
+	help
+	  if Y ,select HUAWEI_MSM_VIBRATOR  
+
+#/*add code to support JOY(U8120) */
+config HUAWEI_FEATURE_OFN_KEY
+	bool "Huawei ofn key"	
+	depends on HUAWEI_KERNEL
+	help
+	  if Y ,select HUAWEI_FEATURE_OFN_KEY  
+
+config HUAWEI_U8220_JOGBALL
+	tristate "Huawei 8220 jogball"	
+	default n
+	help
+	  if Y ,select HUAWEI_U8220_JOGBALL
+
+config HUAWEI_JOGBALL
+	tristate "Huawei jogball"	
+	default n
+	help
+	  if Y ,select HUAWEI_JOGBALL
+
+config HUAWEI_KEY_TEST
+	bool "HUAWEI auto key test driver"
+	depends on HUAWEI_KERNEL
+	default y
+	help
+	  Select Y if use auto key test.
+
+config HUAWEI_RGB_KEY_LIGHT
+	bool "HUAWEI rbg key light driver"
+	depends on HUAWEI_KERNEL
+	default y
+	help
+	  Select Y if use RGB key light.
+config HUAWEI_SMEM_SLEEP_LOG
+	bool "HUAWEI smem sleep log driver"
+	depends on HUAWEI_KERNEL
+	default n
+	help
+	  Select Y if use smem sleep log driver.
 
 choice
 	prompt "Power management timeout action"

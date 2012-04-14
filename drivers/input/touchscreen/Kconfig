@@ -582,6 +582,16 @@ config TOUCHSCREEN_PCAP
 	  To compile this driver as a module, choose M here: the
 	  module will be called pcap_ts.
 
+config HUAWEI_TOUCHSCREEN_EXTRA_KEY
+	default n
+	depends on TOUCHSCREEN_MSM_LEGACY
+	bool "Huawei MSM Touchscreen extra key"
+	help
+	  Say Y here if you are running Android framework on HUAWEI
+	  Smart phone. These hacks are required in order
+	  to use touchscreen extra key.
+
+
 config TOUCHSCREEN_CY8C_TS
 	tristate "Cypress TMA300-TMG200 based touchscreens"
 	depends on I2C
@@ -595,5 +605,126 @@ config TOUCHSCREEN_CY8C_TS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cy8c_ts.
+
+config TOUCHSCREEN_CYPRESS_CPT
+	default n
+	tristate "CYPRESS_CPT Touchscreen"
+	select SERIO
+	help
+	  Say Y here if you have a Sahara TouchIT-213 Tablet PC.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cypress_cpt_i2c_ts.
+config  TOUCHSCREEN_SYNAPTICS_I2C_RMI_TM1319
+	default n
+	tristate "synaptics_i2c_rmi Touchscreen"
+	select SERIO
+	help
+         Say Y here if you have a synaptics touchscrenn.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called synaptics_i2c_rmi_tm1319.
+          
+
+config  TOUCHSCREEN_SYNAPTICS_I2C_RMI_TM
+	default n
+	depends on HUAWEI_KERNEL
+	tristate "synaptics-rmi-tm Touchscreen"
+	select SERIO
+	help
+         Say Y here if you have a synaptics touchscrenn.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called synaptics_i2c_rmi_tm1537.
+
+config  HUAWEI_FEATURE_RMI_TOUCH
+	depends on HUAWEI_KERNEL
+	default n
+	tristate "synaptics_i2c_rmi_1564"
+	select SERIO
+	help
+	  Say Y here if you have a synaptics_i2c_rmi_1564.
+	  If unsure, say N.
+	  No compile this driver as a module, choose M here: the
+	  module will be called synaptics_i2c_rmi_1564.
+config  SYNAPTICS_UPDATE_RMI_TS_FIRMWARE
+	default n
+	depends on HUAWEI_FEATURE_RMI_TOUCH
+	bool "SYNAPTICS Touchscreen firmware update"
+	help
+	  Say Y here if you have a synaptics touchscren and want to 
+	  update the firmware.
+	  If unsure, say N.
+config  TOUCHSCREEN_CYPRESS
+	default n
+	tristate "Cypress Touchscreen"
+	select SERIO
+	help
+         Say Y here if you have a cypress touchscrenn.
+         
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called cypress.
+config  CYPRESS_UPDATE_TS_FIRMWARE
+	default n
+	depends on TOUCHSCREEN_CYPRESS
+	bool "CYPRESS Touchscreen firmware update"
+	help
+	  Say Y here if you have a melfas touchscren and want to 
+	  update the firmware.
+	  If unsure, say N.
+config  CYPRESS_RESTORE_FIRMWARE
+	default n
+	depends on CYPRESS_UPDATE_TS_FIRMWARE
+	bool "CYPRESS Touchscreen firmware restore"
+	help
+	  Say Y here if the touchscreen can't use. So you must 
+	  restore the firmware manually.
+	  If unsure, say N.
+
+config  TOUCHSCREEN_MELFAS
+	default n
+	tristate "Melfas Touchscreen"
+	select SERIO
+	help
+         Say Y here if you have a melfas touchscrenn.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called melfas.
+
+config  SYNAPTICS_UPDATE_TS_FIRMWARE
+	default n
+	depends on TOUCHSCREEN_SYNAPTICS_I2C_RMI_TM
+	bool "SYNAPTICS Touchscreen firmware update"
+	help
+	  Say Y here if you have a synaptics touchscren and want to 
+	  update the firmware.
+	  If unsure, say N.
+
+config  MELFAS_UPDATE_TS_FIRMWARE
+	default n
+	depends on TOUCHSCREEN_MELFAS
+	bool "MELFAS Touchscreen firmware update"
+	help
+	  Say Y here if you have a melfas touchscren and want to 
+	  update the firmware.
+	  If unsure, say N.
+config  MELFAS_RESTORE_FIRMWARE
+	default n
+	depends on MELFAS_UPDATE_TS_FIRMWARE
+	bool "MELFAS Touchscreen firmware restore"
+	help
+	  Say Y here if the touchscreen can't use. So you must 
+	  restore the firmware manually.
+	  If unsure, say N.
 
 endif

@@ -32,6 +32,7 @@
 #include <linux/pm_qos_params.h>
 #include <mach/gpio.h>
 
+#include <linux/hardware_self_adapt.h>
 
 enum {
 	I2C_WRITE_DATA          = 0x00,
@@ -214,6 +215,19 @@ msm_i2c_interrupt(int irq, void *devid)
 			goto out_err;
 		}
 
+		if((dev->msg->addr == 0x1E) && st303_gs_is_supported())//st303_compass address 0x1e
+		{
+			//printk(KERN_ERR "msg->addr=:0x%x \n",dev->msg->addr);
+			udelay(10);
+		/* i2c_address is 0x5a>>1, camera type is s5k5ca*/
+		}else if((dev->msg->addr == (0x5a >> 1)) && camera_is_supported() ){
+			udelay(10);
+		/* i2c_address is 0xac>>1, camera type is s5k4cdgx */
+		}else if((dev->msg->addr == (0xac >> 1)) && camera_is_supported() ){
+			udelay(10);
+		}else if((dev->msg->addr == (0x78 >> 1)) && camera_is_supported() ){
+			udelay(12);
+		}
 		if (dev->cnt) {
 			/* Ready to take a byte */
 			data = dev->msg->buf[dev->pos];

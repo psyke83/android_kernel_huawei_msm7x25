@@ -41,6 +41,7 @@
 #include <mach/qdsp5/qdsp5audppmsg.h>
 #include <mach/qdsp5/qdsp5audplaycmdi.h>
 #include <mach/qdsp5/qdsp5audplaymsg.h>
+#include "../socinfo.h"
 #include <mach/debug_mm.h>
 
 /* Hold 30 packets of 24 bytes each and 14 bytes of meta in */
@@ -192,6 +193,9 @@ static int audevrc_enable(struct audio *audio)
 		cfg.tx_rate = RPC_AUD_DEF_SAMPLE_RATE_NONE;
 		cfg.rx_rate = RPC_AUD_DEF_SAMPLE_RATE_48000;
 		cfg.def_method = RPC_AUD_DEF_METHOD_PLAYBACK;
+		if (cpu_is_msm7x25())
+			cfg.codec = RPC_AUD_DEF_CODEC_VOC_EVRC;
+		else
 		cfg.codec = RPC_AUD_DEF_CODEC_EVRC;
 		cfg.snd_method = RPC_SND_METHOD_MIDI;
 

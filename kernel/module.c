@@ -3104,7 +3104,36 @@ void print_modules(void)
 		printk(" [last unloaded: %s]", last_unloaded_module);
 	printk("\n");
 }
+#ifdef CONFIG_HUAWEI_CRASH_DUMP
+int sprintf_modules(void *buf)
+{
+	int len = 0;
+	int tmp_len = 0;
+	struct module *mod;
+	char local_buf[8];
 
+	tmp_len = sprintf(buf, "%s", "Modules linked in:");
+	len += tmp_len;
+	buf += tmp_len;
+	list_for_each_entry(mod, &modules, list)
+	{
+		tmp_len = sprintf(buf, "%s%s", mod->name, module_flags(mod, local_buf));
+		buf += tmp_len;
+		len += tmp_len;
+	}
+	if (last_unloaded_module[0])
+	{
+		tmp_len += sprintf(buf, " [last unloaded: %s]", last_unloaded_module);
+		buf += tmp_len;
+		len += tmp_len;
+	}
+	tmp_len = sprintf(buf, "%s", "\n");
+	buf += tmp_len;
+	len += tmp_len;
+	return len;
+}
+EXPORT_SYMBOL(sprintf_modules); 
+#endif
 #ifdef CONFIG_MODVERSIONS
 /* Generate the signature for all relevant module structures here.
  * If these change, we don't want to try to parse the module. */

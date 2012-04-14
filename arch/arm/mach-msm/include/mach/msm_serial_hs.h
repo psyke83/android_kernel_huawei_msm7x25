@@ -31,4 +31,7 @@ void msm_hs_request_clock_off(struct uart_port *uport);
 void msm_hs_request_clock_on(struct uart_port *uport);
 void msm_hs_set_mctrl(struct uart_port *uport,
 				    unsigned int mctrl);
+#ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
+void hci_trigger_hs_port_tx_ready(void);
+#endif
 #endif

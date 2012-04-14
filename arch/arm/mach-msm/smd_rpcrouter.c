@@ -572,9 +572,13 @@ int msm_rpcrouter_destroy_local_endpoint(struct msm_rpc_endpoint *ept)
 
 	wake_lock_destroy(&ept->read_q_wake_lock);
 	wake_lock_destroy(&ept->reply_q_wake_lock);
+#ifndef CONFIG_HUAWEI_KERNEL
+	list_del(&ept->list);
+#else
 	spin_lock_irqsave(&local_endpoints_lock, flags);
 	list_del(&ept->list);
 	spin_unlock_irqrestore(&local_endpoints_lock, flags);
+#endif
 	kfree(ept);
 	return 0;
 }
@@ -2235,8 +2239,8 @@ static int __init rpcrouter_init(void)
 {
 	int ret;
 
-	msm_rpc_connect_timeout_ms = 0;
-	smd_rpcrouter_debug_mask |= SMEM_LOG;
+	msm_rpc_connect_timeout_ms = 100;
+
 	debugfs_init();
 
 	/* Initialize what we need to start processing */

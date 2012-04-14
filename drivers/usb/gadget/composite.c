@@ -27,6 +27,10 @@
 
 #include <linux/usb/composite.h>
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+#include "usb_switch_huawei.h"
+#endif  
+
 
 /*
  * The code in this file is utility code, used to build a gadget driver
@@ -812,6 +816,13 @@ unknown:
 				== USB_RECIP_INTERFACE) {
 			struct usb_configuration	*config;
 			config = cdev->config;
+			/* In some pc, the rndis command is come before rndis bind.
+				It will result to mobile reset for the config is NULL
+			 */
+#ifdef CONFIG_USB_AUTO_INSTALL
+			if (cdev->config == NULL)
+				goto done;
+#endif
 			if (w_index >= config->next_interface_id)
 				goto done;
 			f = cdev->config->interface[intf];
@@ -827,6 +838,18 @@ unknown:
 			if (c && c->setup)
 				value = c->setup(c, ctrl);
 		}
+
+#ifdef CONFIG_USB_AUTO_INSTALL
+
+		if (value < 0) {
+			struct usb_configuration        *cfg;
+
+			list_for_each_entry(cfg, &cdev->configs, list) {
+			if (cfg && cfg->setup)
+				value = cfg->setup(cfg, ctrl);
+			}
+		}
+#endif
 
 		goto done;
 	}
@@ -943,6 +966,10 @@ static int  composite_bind(struct usb_gadget *gadget)
 	struct usb_composite_dev	*cdev;
 	int				status = -ENOMEM;
 
+#ifdef CONFIG_USB_AUTO_INSTALL
+    USB_PR("%s begin\n", __func__);
+#endif 
+
 	cdev = kzalloc(sizeof *cdev, GFP_KERNEL);
 	if (!cdev)
 		return status;
@@ -1006,6 +1033,9 @@ static int  composite_bind(struct usb_gadget *gadget)
 			cdev->desc.iSerialNumber, iSerialNumber);
 
 	INFO(cdev, "%s ready\n", composite->name);
+#ifdef CONFIG_USB_AUTO_INSTALL
+    USB_PR("%s finish\n", __func__);
+#endif 
 	return 0;
 
 fail:

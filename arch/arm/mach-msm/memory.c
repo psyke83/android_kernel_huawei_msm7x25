@@ -44,7 +44,7 @@ void *zero_page_strongly_ordered;
 
 void map_zero_page_strongly_ordered(void)
 {
-#if defined(CONFIG_ARCH_MSM7X27)
+#if defined(CONFIG_ARCH_MSM7X25) || defined(CONFIG_ARCH_MSM7X27)
 	if (zero_page_strongly_ordered)
 		return;
 
@@ -58,7 +58,7 @@ EXPORT_SYMBOL(map_zero_page_strongly_ordered);
 
 void write_to_strongly_ordered_memory(void)
 {
-#if defined(CONFIG_ARCH_MSM7X27)
+#if defined(CONFIG_ARCH_MSM7X25) || defined(CONFIG_ARCH_MSM7X27)
 	if (!zero_page_strongly_ordered) {
 		if (!in_interrupt())
 			map_zero_page_strongly_ordered();
@@ -76,7 +76,7 @@ EXPORT_SYMBOL(write_to_strongly_ordered_memory);
 
 void flush_axi_bus_buffer(void)
 {
-#if defined(CONFIG_ARCH_MSM7X27)
+#if defined(CONFIG_ARCH_MSM7X25) || defined(CONFIG_ARCH_MSM7X27)
 	__asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 5" \
 				    : : "r" (0) : "memory");
 	write_to_strongly_ordered_memory();
