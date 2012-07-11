@@ -77,8 +77,8 @@ int wifi_get_irq_number(unsigned long *irq_flags_ptr)
 		*irq_flags_ptr = wifi_irqres->flags & IRQF_TRIGGER_MASK;
 		return (int)wifi_irqres->start;
 	}
-#ifdef CUSTOM_OOB_GPIO_NUM
-	return CUSTOM_OOB_GPIO_NUM;
+#ifdef CONFIG_USE_CUSTOM_OOB_GPIO_NUM
+	return CONFIG_CUSTOM_OOB_GPIO_NUM;
 #else
 	return -1;
 #endif
