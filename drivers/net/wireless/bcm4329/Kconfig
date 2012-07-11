@@ -12,6 +12,19 @@ config BCM4329
 	  If you choose to build a module, it'll be called dhd. Say M if
 	  unsure.
 
+config USE_CUSTOM_SDCC_WIFI_SLOT
+	depends on BCM4329
+	bool "use custom sdcc wifi slot"
+	default n
+	---help---
+    Use custom sdcc wifi slot
+    Used by Huawei U8160/U8180 and possibly other devices
+
+config CUSTOM_SDCC_WIFI_SLOT
+	int "custom sdcc slot number"
+	depends on USE_CUSTOM_SDCC_WIFI_SLOT
+    default 2
+
 config BCM4329_FIRST_SCAN
 	depends on BCM4329
 	bool "first scan support"

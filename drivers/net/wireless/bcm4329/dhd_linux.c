@@ -95,6 +95,35 @@ int wifi_set_carddetect(int on)
 	return 0;
 }
 
+#ifdef CONFIG_USE_CUSTOM_SDCC_WIFI_SLOT
+static void dhd_enable_mmchost_polling(int enable)
+{
+    mm_segment_t        oldfs;
+    struct file     *filp;
+    int         length;
+    oldfs = get_fs();
+    set_fs(KERNEL_DS);
+    do {
+        char buf[3]; 
+        char sdcc_param[128] = {0};
+        sprintf(sdcc_param, "/sys/devices/platform/msm_sdcc.%d/polling", CONFIG_CUSTOM_SDCC_WIFI_SLOT);
+        printk("%s: %s\n",__FUNCTION__,sdcc_param);
+
+        filp = filp_open(sdcc_param, O_RDWR, S_IRUSR);
+        if (IS_ERR(filp) || !filp->f_op)
+            break;
+        length = snprintf(buf, sizeof(buf), "%d\n", enable ? 1 : 0);
+        if (filp->f_op->write(filp, buf, length, &filp->f_pos) != length) {
+            break;
+        }
+    } while (0);
+    if (!IS_ERR(filp)) {           
+        filp_close(filp, NULL);
+    }
+    set_fs(oldfs);    
+}
+#endif
+
 int wifi_set_power(int on, unsigned long msec)
 {
 	printk("%s = %d\n", __FUNCTION__, on);
@@ -160,8 +189,11 @@ static int wifi_probe(struct platform_device *pdev)
 	wifi_irqres = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "bcm4329_wlan_irq");
 
 	wifi_set_power(1, 0);	/* Power On */
+#ifdef CONFIG_USE_CUSTOM_SDCC_WIFI_SLOT
+	dhd_enable_mmchost_polling(1); 
+#else
 	wifi_set_carddetect(1);	/* CardDetect (0->1) */
-
+#endif
 	up(&wifi_control_sem);
 	return 0;
 }
@@ -176,8 +208,11 @@ static int wifi_remove(struct platform_device *pdev)
 #endif
 	DHD_TRACE(("## %s\n", __FUNCTION__));
 	wifi_set_power(0, 0);	/* Power Off */
+#ifdef CONFIG_USE_CUSTOM_SDCC_WIFI_SLOT
+	dhd_enable_mmchost_polling(1); 
+#else
 	wifi_set_carddetect(0);	/* CardDetect (1->0) */
-
+#endif
 	up(&wifi_control_sem);
 	return 0;
 }
