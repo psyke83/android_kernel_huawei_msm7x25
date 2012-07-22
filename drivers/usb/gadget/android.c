@@ -118,7 +118,9 @@ struct android_dev {
 	int version;
 
 	int adb_enabled;
+#ifdef CONFIG_USB_AUTO_INSTALL
 	int nluns;
+#endif
 	struct mutex lock;
 	struct android_usb_platform_data *pdata;
 	unsigned long functions;
@@ -228,8 +230,7 @@ static int  android_bind_config(struct usb_configuration *c)
 #ifdef CONFIG_USB_AUTO_INSTALL
 			USB_PR("%s, dev->nluns=%d\n", __func__, dev->nluns);
 #endif 
-			ret = mass_storage_function_add(dev->cdev, c,
-								dev->nluns);
+			ret = mass_storage_function_add(dev->cdev, c);
 			if (ret)
 				return ret;
 			break;
@@ -293,21 +294,6 @@ static int  android_bind_config(struct usb_configuration *c)
 	}
 	return ret;
 
-}
-
-static int is_usb_networking_on(void)
-{
-	/* Android user space allows USB tethering only when usb0 is listed
-	 * in network interfaces. Setup network link though RNDIS/CDC-ECM
-	 * is not listed in current composition. Network links is not setup
-	 * for every composition switch. It is setup one time and teared down
-	 * during module removal.
-	 */
-#if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
-	return 1;
-#else
-	return 0;
-#endif
 }
 
 static int get_num_of_serial_ports(void)
@@ -432,14 +418,20 @@ static int  android_bind(struct usb_composite_dev *cdev)
 			return ret;
 	}
 
-	if (is_usb_networking_on()) {
-		/* set up network link layer */
-		ret = gether_setup(cdev->gadget, hostaddr);
-		if (ret && (ret != -EBUSY)) {
-			gserial_cleanup();
-			return ret;
-		}
+	/* Android user space allows USB tethering only when usb0 is listed
+	 * in network interfaces. Setup network link though RNDIS/CDC-ECM
+	 * is not listed in current composition. Network links is not setup
+	 * for every composition switch. It is setup one time and teared down
+	 * during module removal.
+	 */
+#if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
+	/* set up network link layer */
+	ret = gether_setup(cdev->gadget, hostaddr);
+	if (ret && (ret != -EBUSY)) {
+		gserial_cleanup();
+		return ret;
 	}
+#endif
 
 	/* register our configuration */
 	ret = usb_add_config(cdev, &android_config_driver);
@@ -848,7 +840,6 @@ static int __init android_probe(struct platform_device *pdev)
 	strings_dev[STRING_PRODUCT_IDX].s = pdata->product_name;
 	strings_dev[STRING_MANUFACTURER_IDX].s = pdata->manufacturer_name;
 	strings_dev[STRING_SERIAL_IDX].s = serial_number;
-	dev->nluns = pdata->nluns;
 	dev->pdata = pdata;
 #ifdef CONFIG_USB_AUTO_INSTALL
 	if ((0 == memcmp(usb_para_data.vender_para.vender_name, VENDOR_EMOBILE, strlen(VENDOR_EMOBILE)))
@@ -968,8 +959,9 @@ module_init(init);
 
 static void __exit cleanup(void)
 {
-	if (is_usb_networking_on())
-		gether_cleanup();
+#if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
+	gether_cleanup();
+#endif
 
 	usb_composite_unregister(&android_usb_driver);
 	misc_deregister(&adb_enable_device);

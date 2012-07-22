@@ -52,16 +52,16 @@
 #define MODEM_DATA 		1
 #define QDSP_DATA  		2
 #define APPS_DATA  		3
-#define NON_SMD_CONTEXT	0
-#define SMD_CONTEXT		1
 /* Number of maximum USB requests that the USB layer should handle at
    one time. */
 #define MAX_DIAG_USB_REQUESTS 12
 #define MSG_MASK_SIZE 8000
 #define LOG_MASK_SIZE 1000
 #define EVENT_MASK_SIZE 1000
-#define REG_TABLE_SIZE 25
 #define PKT_SIZE 4096
+/* This is the maximum number of pkt registrations supported at initialization*/
+extern unsigned int diag_max_registration;
+extern unsigned int diag_threshold_registration;
 
 #define APPEND_DEBUG(ch) \
 do {							\

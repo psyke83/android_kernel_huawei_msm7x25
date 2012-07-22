@@ -46,7 +46,7 @@ static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
 #define CHK_OVERFLOW(bufStart, start, end, length) \
 ((bufStart <= start) && (end - start >= length)) ? 1 : 0
 
-void __diag_smd_send_req(int context)
+void __diag_smd_send_req(void)
 {
 	void *buf;
 
@@ -72,10 +72,7 @@ void __diag_smd_send_req(int context)
 				printk(KERN_INFO "Out of diagmem for a9\n");
 			} else {
 				APPEND_DEBUG('i');
-				if (context == SMD_CONTEXT)
-					smd_read_from_cb(driver->ch, buf, r);
-				else
-					smd_read(driver->ch, buf, r);
+				smd_read(driver->ch, buf, r);
 				APPEND_DEBUG('j');
 				driver->usb_write_ptr->length = r;
 				driver->in_busy = 1;
@@ -153,7 +150,7 @@ int diag_device_write(void *buf, int proc_num)
     return err;
 }
 
-void __diag_smd_qdsp_send_req(int context)
+void __diag_smd_qdsp_send_req(void)
 {
 	void *buf;
 
@@ -170,11 +167,7 @@ void __diag_smd_qdsp_send_req(int context)
 				printk(KERN_INFO "Out of diagmem for q6\n");
 			} else {
 				APPEND_DEBUG('l');
-				if (context == SMD_CONTEXT)
-					smd_read_from_cb(
-						driver->chqdsp, buf, r);
-				else
-					smd_read(driver->chqdsp, buf, r);
+				smd_read(driver->chqdsp, buf, r);
 				APPEND_DEBUG('m');
 				driver->usb_write_ptr_qdsp->length = r;
 				driver->in_busy_qdsp = 1;
@@ -389,7 +382,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		subsys_cmd_code = *(uint16_t *)temp;
 		temp += 2;
 
-		for (i = 0; i < REG_TABLE_SIZE; i++) {
+		for (i = 0; i < diag_max_registration; i++) {
 			if (driver->table[i].process_id != 0) {
 				if (driver->table[i].cmd_code ==
 				     cmd_code && driver->table[i].subsys_id ==
@@ -435,7 +428,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 					}
 				} /* end of else-if */
 			} /* if(driver->table[i].process_id != 0) */
-		}  /* for (i = 0; i < REG_TABLE_SIZE; i++) */
+		}  /* for (i = 0; i < diag_max_registration; i++) */
 	} /* else */
 		return packet_type;
 }
@@ -533,15 +526,11 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 	if (buf == (void *)driver->usb_buf_in) {
 		driver->in_busy = 0;
 		APPEND_DEBUG('o');
-		spin_lock(&diagchar_smd_lock);
-		__diag_smd_send_req(NON_SMD_CONTEXT);
-		spin_unlock(&diagchar_smd_lock);
+		queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
 	} else if (buf == (void *)driver->usb_buf_in_qdsp) {
 		driver->in_busy_qdsp = 0;
 		APPEND_DEBUG('p');
-		spin_lock(&diagchar_smd_qdsp_lock);
-		__diag_smd_qdsp_send_req(NON_SMD_CONTEXT);
-		spin_unlock(&diagchar_smd_qdsp_lock);
+		queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 	} else {
 		diagmem_free(driver, (unsigned char *)buf, POOL_TYPE_HDLC);
 		diagmem_free(driver, (unsigned char *)diag_write_ptr,
@@ -578,17 +567,13 @@ static struct diag_operations diagfwdops = {
 
 static void diag_smd_notify(void *ctxt, unsigned event)
 {
-	spin_lock(&diagchar_smd_lock);
-	__diag_smd_send_req(SMD_CONTEXT);
-	spin_unlock(&diagchar_smd_lock);
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
 }
 
 #if defined(CONFIG_MSM_N_WAY_SMD)
 static void diag_smd_qdsp_notify(void *ctxt, unsigned event)
 {
-	spin_lock(&diagchar_smd_qdsp_lock);
-	__diag_smd_qdsp_send_req(SMD_CONTEXT);
-	spin_unlock(&diagchar_smd_qdsp_lock);
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 }
 #endif
 
@@ -649,8 +634,6 @@ void diag_read_work_fn(struct work_struct *work)
 void diagfwd_init(void)
 {
 	diag_debug_buf_idx = 0;
-	spin_lock_init(&diagchar_smd_lock);
-	spin_lock_init(&diagchar_smd_qdsp_lock);
 	if (driver->usb_buf_out  == NULL &&
 	     (driver->usb_buf_out = kzalloc(USB_MAX_OUT_BUF,
 					 GFP_KERNEL)) == NULL)
@@ -679,11 +662,11 @@ void diagfwd_init(void)
 	if (driver->buf_tbl == NULL)
 		goto err;
 	if (driver->data_ready == NULL &&
-	     (driver->data_ready = kzalloc(driver->num_clients,
+	     (driver->data_ready = kzalloc(driver->num_clients * 4,
 					    GFP_KERNEL)) == NULL)
 		goto err;
 	if (driver->table == NULL &&
-	     (driver->table = kzalloc(REG_TABLE_SIZE*
+	     (driver->table = kzalloc(diag_max_registration*
 				      sizeof(struct diag_master_table),
 				       GFP_KERNEL)) == NULL)
 		goto err;

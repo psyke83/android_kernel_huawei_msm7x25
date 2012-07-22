@@ -562,6 +562,31 @@ int dal_call_f5(struct dal_client *client, uint32_t ddi, void *ibuf, uint32_t il
 	return res;
 }
 
+int dal_call_f6(struct dal_client *client, uint32_t ddi, uint32_t s1,
+		void *ibuf, uint32_t ilen)
+{
+	uint32_t tmp[128];
+	int res;
+	int param_idx = 0;
+
+	if (ilen + 8 > DAL_DATA_MAX)
+		return -EINVAL;
+
+	tmp[param_idx] = s1;
+	param_idx++;
+	tmp[param_idx] = ilen;
+	param_idx++;
+	memcpy(&tmp[param_idx], ibuf, ilen);
+	param_idx += DIV_ROUND_UP(ilen, 4);
+
+	res = dal_call(client, ddi, 6, tmp, param_idx * 4, tmp, sizeof(tmp));
+
+	if (res >= 4)
+		return (int) tmp[0];
+
+	return res;
+}
+
 int dal_call_f9(struct dal_client *client, uint32_t ddi, void *obuf,
 		uint32_t olen)
 {
@@ -590,11 +615,16 @@ int dal_call_f13(struct dal_client *client, uint32_t ddi, void *ibuf1,
 		 uint32_t ilen1, void *ibuf2, uint32_t ilen2, void *obuf,
 		 uint32_t olen)
 {
-	uint32_t tmp[128];
+	uint32_t tmp[DAL_DATA_MAX/4];
 	int res;
 	int param_idx = 0;
+	int num_bytes = 0;
 
-	if (ilen1 + ilen2 + 8 > DAL_DATA_MAX)
+	num_bytes = (DIV_ROUND_UP(ilen1, 4)) * 4;
+	num_bytes += (DIV_ROUND_UP(ilen2, 4)) * 4;
+
+	if ((num_bytes > DAL_DATA_MAX - 12) || (olen > DAL_DATA_MAX - 8) ||
+			(ilen1 > DAL_DATA_MAX) || (ilen2 > DAL_DATA_MAX))
 		return -EINVAL;
 
 	tmp[param_idx] = ilen1;

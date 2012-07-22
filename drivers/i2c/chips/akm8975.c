@@ -866,7 +866,9 @@ int akm8975_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	err = gpio_configure(GPIO_COMPASS_INT, GPIOF_INPUT | IRQF_TRIGGER_RISING);/*gpio 107 is interupt for touchscreen.*/
 	if (err) {
 		printk(KERN_ERR "%s: gpio_configure %d failed\n", __func__, GPIO_COMPASS_INT);
+#ifndef CONFIG_GPIOLIB
 		goto exit_check_dev_id;
+#endif
 	}
 	
 	err = request_irq(client->irq, akm8975_interrupt, IRQ_TYPE_EDGE_RISING,

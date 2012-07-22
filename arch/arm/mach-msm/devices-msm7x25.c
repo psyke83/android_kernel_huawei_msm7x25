@@ -23,12 +23,14 @@
 #include <mach/board.h>
 
 #include "devices.h"
+#include "gpio_hw.h"
 #include "smd_private.h"
 
 #include <asm/mach/flash.h>
 
 #include <asm/mach/mmc.h>
 #include <mach/msm_hsusb.h>
+#include "msm7200a-gpio.h"
 
 static struct resource resources_uart1[] = {
 	{
@@ -512,77 +514,6 @@ int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
 	return platform_device_register(pdev);
 }
 
-#define RAMFS_INFO_MAGICNUMBER		0x654D4D43
-#define RAMFS_INFO_VERSION		0x00000001
-#define RAMFS_MODEMSTORAGE_ID		0x4D454653
-
-static struct resource rmt_storage_resources[] = {
-       {
-		.flags  = IORESOURCE_MEM,
-       },
-};
-
-static struct platform_device rmt_storage_device = {
-       .name           = "rmt_storage",
-       .id             = -1,
-       .num_resources  = ARRAY_SIZE(rmt_storage_resources),
-       .resource       = rmt_storage_resources,
-};
-
-struct shared_ramfs_entry {
-	uint32_t client_id;   	/* Client id to uniquely identify a client */
-	uint32_t base_addr;	/* Base address of shared RAMFS memory */
-	uint32_t size;		/* Size of the shared RAMFS memory */
-	uint32_t reserved;	/* Reserved attribute for future use */
-};
-struct shared_ramfs_table {
-	uint32_t magic_id;  	/* Identify RAMFS details in SMEM */
-	uint32_t version;	/* Version of shared_ramfs_table */
-	uint32_t entries;	/* Total number of valid entries   */
-	struct shared_ramfs_entry ramfs_entry[3];	/* List all entries */
-};
-
-int __init rmt_storage_add_ramfs(void)
-{
-	struct shared_ramfs_table *ramfs_table;
-	struct shared_ramfs_entry *ramfs_entry;
-	int index;
-
-	ramfs_table = smem_alloc(SMEM_SEFS_INFO,
-			sizeof(struct shared_ramfs_table));
-
-	if (!ramfs_table) {
-		printk(KERN_WARNING "%s: No RAMFS table in SMEM\n", __func__);
-		return -ENOENT;
-	}
-
-	if ((ramfs_table->magic_id != (u32) RAMFS_INFO_MAGICNUMBER) ||
-		(ramfs_table->version != (u32) RAMFS_INFO_VERSION)) {
-		printk(KERN_WARNING "%s: Magic / Version mismatch:, "
-		       "magic_id=%#x, format_version=%#x\n", __func__,
-		       ramfs_table->magic_id, ramfs_table->version);
-		return -ENOENT;
-	}
-
-	for (index = 0; index < ramfs_table->entries; index++) {
-		ramfs_entry = &ramfs_table->ramfs_entry[index];
-
-		/* Find a match for the Modem Storage RAMFS area */
-		if (ramfs_entry->client_id == (u32) RAMFS_MODEMSTORAGE_ID) {
-			printk(KERN_INFO "%s: RAMFS Info (from SMEM): "
-				"Baseaddr = 0x%08x, Size = 0x%08x\n", __func__,
-				ramfs_entry->base_addr, ramfs_entry->size);
-
-			rmt_storage_resources[0].start = ramfs_entry->base_addr;
-			rmt_storage_resources[0].end = ramfs_entry->base_addr +
-							ramfs_entry->size - 1;
-			platform_device_register(&rmt_storage_device);
-			return 0;
-		}
-	}
-	return -ENOENT;
-}
-
 #if defined(CONFIG_FB_MSM_MDP40)
 #define MDP_BASE          0xA3F00000
 #define PMDH_BASE         0xAD600000
@@ -823,7 +754,7 @@ struct clk msm_clocks_7x25[] = {
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
 	CLK_PCOM("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
-	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, 0),
+	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, OFF),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
@@ -835,6 +766,9 @@ struct clk msm_clocks_7x25[] = {
 	CLK_PCOM("sdc_pclk",	SDC3_P_CLK,	&msm_device_sdc3.dev, OFF),
 	CLK_PCOM("sdc_clk",	SDC4_CLK,	&msm_device_sdc4.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC4_P_CLK,	&msm_device_sdc4.dev, OFF),
+	CLK_PCOM("tsif_clk",	TSIF_CLK,	NULL, 0),
+	CLK_PCOM("tsif_ref_clk", TSIF_REF_CLK,	NULL, 0),
+	CLK_PCOM("tsif_pclk",	TSIF_P_CLK,	NULL, 0),
 	CLK_PCOM("uart_clk",	UART1_CLK,	&msm_device_uart1.dev, OFF),
 	CLK_PCOM("uart_clk",	UART2_CLK,	&msm_device_uart2.dev, 0),
 	CLK_PCOM("uart_clk",	UART3_CLK,	&msm_device_uart3.dev, OFF),
@@ -849,6 +783,26 @@ struct clk msm_clocks_7x25[] = {
 };
 
 unsigned msm_num_clocks_7x25 = ARRAY_SIZE(msm_clocks_7x25);
+
+#ifdef CONFIG_GPIOLIB
+static struct msm7200a_gpio_platform_data gpio_platform_data[] = {
+	MSM7200A_GPIO_PLATFORM_DATA(0,   0,  15, INT_GPIO_GROUP1),
+	MSM7200A_GPIO_PLATFORM_DATA(1,  16,  42, INT_GPIO_GROUP2),
+	MSM7200A_GPIO_PLATFORM_DATA(2,  43,  67, INT_GPIO_GROUP1),
+	MSM7200A_GPIO_PLATFORM_DATA(3,  68,  94, INT_GPIO_GROUP1),
+	MSM7200A_GPIO_PLATFORM_DATA(4,  95, 106, INT_GPIO_GROUP1),
+	MSM7200A_GPIO_PLATFORM_DATA(5, 107, 132, INT_GPIO_GROUP1),
+};
+
+struct platform_device msm_gpio_devices[] = {
+	MSM7200A_GPIO_DEVICE(0, gpio_platform_data),
+	MSM7200A_GPIO_DEVICE(1, gpio_platform_data),
+	MSM7200A_GPIO_DEVICE(2, gpio_platform_data),
+	MSM7200A_GPIO_DEVICE(3, gpio_platform_data),
+	MSM7200A_GPIO_DEVICE(4, gpio_platform_data),
+	MSM7200A_GPIO_DEVICE(5, gpio_platform_data),
+};
+#endif
 
 #define ATAG_CAMERA_ID 0x4d534D74
 /* setup calls mach->fixup, then parse_tags, parse_cmdline

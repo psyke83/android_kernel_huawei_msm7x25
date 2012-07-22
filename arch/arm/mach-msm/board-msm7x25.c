@@ -21,7 +21,6 @@
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/bootmem.h>
-#include <linux/usb/mass_storage_function.h>
 #include <linux/power_supply.h>
 
 
@@ -49,7 +48,7 @@
 #include <mach/memory.h>
 #include <mach/msm_battery.h>
 #include <mach/rpc_server_handset.h>
-
+#include <mach/msm_tsif.h>
 
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
@@ -86,6 +85,11 @@
 #ifdef CONFIG_ARCH_MSM7X27
 #include <linux/msm_kgsl.h>
 #endif
+
+#ifdef CONFIG_USB_ANDROID
+#include <linux/usb/android.h>
+#endif
+
 #ifdef CONFIG_HUAWEI_BCM4329
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 #include <linux/wifi_tiwlan.h>
@@ -353,6 +357,19 @@ static struct usb_composition usb_func_composition[] = {
 	},
 #endif
 };
+static struct usb_mass_storage_platform_data mass_storage_pdata = {
+	.nluns		= 1,
+	.vendor		= "GOOGLE",
+	.product	= "Mass Storage",
+	.release	= 0xFFFF,
+};
+static struct platform_device mass_storage_device = {
+	.name           = "usb_mass_storage",
+	.id             = -1,
+	.dev            = {
+		.platform_data          = &mass_storage_pdata,
+	},
+};
 static struct android_usb_platform_data android_usb_pdata = {
 #ifdef CONFIG_HUAWEI_USB_FUNCTION
 	.vendor_id	= HUAWEI_VID,
@@ -373,7 +390,6 @@ static struct android_usb_platform_data android_usb_pdata = {
 	.product_name	= "Qualcomm HSUSB Device",
 	.manufacturer_name = "Qualcomm Incorporated",
 #endif  /* CONFIG_HUAWEI_USB_FUNCTION */
-	.nluns = 1,
 };
 static struct platform_device android_usb_device = {
 	.name	= "android_usb",
@@ -498,6 +514,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.pmic_register_vbus_sn   = msm_pm_app_register_vbus_sn,
 	.pmic_unregister_vbus_sn = msm_pm_app_unregister_vbus_sn,
 	.pmic_enable_ldo         = msm_pm_app_enable_usb_ldo,
+	.pclk_required_during_lpm = 1,
 };
 
 #ifdef CONFIG_USB_GADGET
@@ -662,7 +679,7 @@ static struct android_pmem_platform_data android_pmem_pdata = {
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
-	.cached = 1,
+	.cached = 1, //psyke83: better to keep enabled?
 };
 
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
@@ -697,6 +714,7 @@ static struct platform_device android_pmem_kernel_ebi1_device = {
 
 static struct msm_handset_platform_data hs_platform_data = {
 	.hs_name = "7k_handset",
+	.pwr_key_delay_ms = 500, /* 0 will disable end key */
 };
 
 static struct platform_device hs_device = {
@@ -706,6 +724,31 @@ static struct platform_device hs_device = {
 		.platform_data = &hs_platform_data,
 	},
 };
+
+/* TSIF begin */
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
+
+#define TSIF_B_SYNC      GPIO_CFG(87, 5, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA)
+#define TSIF_B_DATA      GPIO_CFG(86, 3, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA)
+#define TSIF_B_EN        GPIO_CFG(85, 3, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA)
+#define TSIF_B_CLK       GPIO_CFG(84, 4, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA)
+
+static const struct msm_gpio tsif_gpios[] = {
+	{ .gpio_cfg = TSIF_B_CLK,  .label =  "tsif_clk", },
+	{ .gpio_cfg = TSIF_B_EN,   .label =  "tsif_en", },
+	{ .gpio_cfg = TSIF_B_DATA, .label =  "tsif_data", },
+	{ .gpio_cfg = TSIF_B_SYNC, .label =  "tsif_sync", },
+};
+
+static struct msm_tsif_platform_data tsif_platform_data = {
+	.num_gpios = ARRAY_SIZE(tsif_gpios),
+	.gpios = tsif_gpios,
+	.tsif_clk = "tsif_clk",
+	.tsif_pclk = "tsif_pclk",
+	.tsif_ref_clk = "tsif_ref_clk",
+};
+#endif /* defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE) */
+/* TSIF end   */
 
 #define LCDC_CONFIG_PROC          21
 #define LCDC_UN_CONFIG_PROC       22
@@ -2279,6 +2322,17 @@ static struct platform_device msm_batt_device = {
 };
 
 
+static struct platform_device *early_devices[] __initdata = {
+#ifdef CONFIG_GPIOLIB
+	&msm_gpio_devices[0],
+	&msm_gpio_devices[1],
+	&msm_gpio_devices[2],
+	&msm_gpio_devices[3],
+	&msm_gpio_devices[4],
+	&msm_gpio_devices[5],
+#endif
+};
+
 static struct platform_device msm_wlan_ar6000 = {
 	.name		= "wlan_ar6000",
 	.id		= 1,
@@ -2323,6 +2377,7 @@ static struct platform_device *devices[] __initdata = {
 #endif
 
 #ifdef CONFIG_USB_ANDROID
+	&mass_storage_device,
 	&android_usb_device,
 #endif
 	&msm_device_i2c,
@@ -2387,6 +2442,9 @@ static struct platform_device *devices[] __initdata = {
 #ifdef CONFIG_ARCH_MSM7X27
 	&msm_device_kgsl,
 #endif
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
+	&msm_device_tsif,
+#endif
 	&hs_device,
 	&msm_batt_device,
 #ifdef CONFIG_HUAWEI_BATTERY
@@ -2427,7 +2485,7 @@ static void __init msm7x2x_init_irq(void)
 
 static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
 	.acpu_switch_time_us = 50,
-	.max_speed_delta_khz = 256000,
+	.max_speed_delta_khz = 256000, //psyke83: is 400000 better?
 	.vdd_switch_time_us = 62,
 	.max_axi_khz = 160000,
 };
@@ -2459,9 +2517,9 @@ static void __init msm7x2x_init_host(void)
 #endif
 
 
-#ifdef CONFIG_MMC
-static void sdcc_gpio_init(void)
-{
+#if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
+	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT))
+
 #ifndef CONFIG_HUAWEI_BCM4329
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 	int rc = 0;	
@@ -2478,82 +2536,80 @@ static void sdcc_gpio_init(void)
 		printk(KERN_ERR "%s: Failed to configure GPIO[%d] = %d\n",__func__, gpio_pin, rc);
 #endif
 #endif
-	/* SDC1 GPIOs */
-#ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-	if (gpio_request(51, "sdc1_data_3"))
-		pr_err("failed to request gpio sdc1_data_3\n");
-	if (gpio_request(52, "sdc1_data_2"))
-		pr_err("failed to request gpio sdc1_data_2\n");
-	if (gpio_request(53, "sdc1_data_1"))
-		pr_err("failed to request gpio sdc1_data_1\n");
-	if (gpio_request(54, "sdc1_data_0"))
-		pr_err("failed to request gpio sdc1_data_0\n");
-	if (gpio_request(55, "sdc1_cmd"))
-		pr_err("failed to request gpio sdc1_cmd\n");
-	if (gpio_request(56, "sdc1_clk"))
-		pr_err("failed to request gpio sdc1_clk\n");
-#endif
 
-	/* SDC2 GPIOs */
-#ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-	if (gpio_request(62, "sdc2_clk"))
-		pr_err("failed to request gpio sdc2_clk\n");
-	if (gpio_request(63, "sdc2_cmd"))
-		pr_err("failed to request gpio sdc2_cmd\n");
-	if (gpio_request(64, "sdc2_data_3"))
-		pr_err("failed to request gpio sdc2_data_3\n");
-	if (gpio_request(65, "sdc2_data_2"))
-		pr_err("failed to request gpio sdc2_data_2\n");
-	if (gpio_request(66, "sdc2_data_1"))
-		pr_err("failed to request gpio sdc2_data_1\n");
-	if (gpio_request(67, "sdc2_data_0"))
-		pr_err("failed to request gpio sdc2_data_0\n");
-#endif
-}
+static unsigned long vreg_sts, gpio_sts;
+static struct vreg *vreg_mmc;
+static unsigned mpp_mmc = 2;
 
-static unsigned sdcc_cfg_data[][6] = {
-	/* SDC1 configs */
+struct sdcc_gpio {
+	struct msm_gpio *cfg_data;
+	uint32_t size;
+	struct msm_gpio *sleep_cfg_data;
+};
+
+static struct msm_gpio sdc1_cfg_data[] = {
+	{GPIO_CFG(51, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc1_dat_3"},
+	{GPIO_CFG(52, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc1_dat_2"},
+	{GPIO_CFG(53, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc1_dat_1"},
+	{GPIO_CFG(54, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc1_dat_0"},
+	{GPIO_CFG(55, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc1_cmd"},
+	{GPIO_CFG(56, 1, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_8MA), "sdc1_clk"},
+};
+
+static struct msm_gpio sdc2_cfg_data[] = {
+	{GPIO_CFG(62, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_8MA), "sdc2_clk"},
+	{GPIO_CFG(63, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc2_cmd"},
+	{GPIO_CFG(64, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc2_dat_3"},
+	{GPIO_CFG(65, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc2_dat_2"},
+	{GPIO_CFG(66, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc2_dat_1"},
+	{GPIO_CFG(67, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA), "sdc2_dat_0"},
+};
+
+static struct msm_gpio sdc2_sleep_cfg_data[] = {
+	{GPIO_CFG(62, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_clk"},
+	{GPIO_CFG(63, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_cmd"},
+	{GPIO_CFG(64, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_dat_3"},
+	{GPIO_CFG(65, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_dat_2"},
+	{GPIO_CFG(66, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_dat_1"},
+	{GPIO_CFG(67, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), "sdc2_dat_0"},
+};
+
+static struct sdcc_gpio sdcc_cfg_data[] = {
 	{
-	GPIO_CFG(51, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(52, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(53, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(54, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(55, 1, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(56, 1, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_8MA),
+		.cfg_data = sdc1_cfg_data,
+		.size = ARRAY_SIZE(sdc1_cfg_data),
+		.sleep_cfg_data = NULL,
 	},
-	/* SDC2 configs */
 	{
-	GPIO_CFG(62, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_8MA),
-	GPIO_CFG(63, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(64, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(65, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(66, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
-	GPIO_CFG(67, 2, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA),
+		.cfg_data = sdc2_cfg_data,
+		.size = ARRAY_SIZE(sdc2_cfg_data),
+		.sleep_cfg_data = sdc2_sleep_cfg_data,
 	},
 };
 
-static unsigned long vreg_sts, gpio_sts;
-static unsigned mpp_mmc = 2;
-static struct vreg *vreg_mmc;
-
 static void msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
 {
-	int i, rc;
+	int rc = 0;
+	struct sdcc_gpio *curr;
 
+	curr = &sdcc_cfg_data[dev_id - 1];
 	if (!(test_bit(dev_id, &gpio_sts)^enable))
 		return;
 
-	if (enable)
+	if (enable) {
 		set_bit(dev_id, &gpio_sts);
-	else
-		clear_bit(dev_id, &gpio_sts);
-
-	for (i = 0; i < ARRAY_SIZE(sdcc_cfg_data[dev_id - 1]); i++) {
-		rc = gpio_tlmm_config(sdcc_cfg_data[dev_id - 1][i],
-			enable ? GPIO_ENABLE : GPIO_DISABLE);
+		rc = msm_gpios_request_enable(curr->cfg_data, curr->size);
 		if (rc)
-			printk(KERN_ERR "%s: gpio_tlmm_config(%#x)=%d\n",
-				__func__, sdcc_cfg_data[dev_id - 1][i], rc);
+			printk(KERN_ERR "%s: Failed to turn on GPIOs for slot %d\n",
+				__func__,  dev_id);
+	} else {
+		clear_bit(dev_id, &gpio_sts);
+		if (curr->sleep_cfg_data) {
+			msm_gpios_enable(curr->sleep_cfg_data, curr->size);
+			msm_gpios_free(curr->sleep_cfg_data, curr->size);
+			return;
+		}
+		msm_gpios_disable_free(curr->cfg_data, curr->size);
 	}
 }
 
@@ -2593,16 +2649,22 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 	return 0;
 }
 
+#ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 static struct mmc_platform_data msm7x2x_sdcc_data = {
 	.ocr_mask	= MMC_VDD_28_29,
 	.translate_vdd	= msm_sdcc_setup_power,
-	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,  
+	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
-	.nonremovable	= 1,
+	.nonremovable	= 0,
+#ifdef CONFIG_MMC_MSM_SDC1_DUMMY52_REQUIRED
+	.dummy52_required = 1,
+#endif
 };
+#endif
 
+#ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 #ifdef CONFIG_HUAWEI_WIFI_SDCC 
 static uint32_t msm_sdcc_setup_power_wifi(struct device *dv,
                                           unsigned int vdd)
@@ -2619,14 +2681,19 @@ static struct mmc_platform_data msm7x2x_sdcc_data_wifi = {
 	.ocr_mask	= MMC_VDD_28_29,
 	.translate_vdd	= msm_sdcc_setup_power_wifi,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
-	//back to 29 kernel sync dummy52
-//	.dummy52_required = 1,   
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT //psyke83 - safe?
+	//.sdiowakeup_irq = MSM_GPIO_TO_INT(66),
+#endif
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
-	.nonremovable	= 0,
+	.nonremovable	= 1,
+#ifdef CONFIG_MMC_MSM_SDC2_DUMMY52_REQUIRED
+	.dummy52_required = 1,
+#endif
 };
-#endif 
+#endif
+#endif
 
 #if CONFIG_HUAWEI_WIFI_SDCC
 #define PREALLOC_WLAN_NUMBER_OF_SECTIONS	4
@@ -2856,12 +2923,12 @@ static void __init msm7x2x_init_mmc(void)
                __func__, PTR_ERR(vreg_mmc));
         return;
     }
-	sdcc_gpio_init();
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	msm_add_sdcc(1, &msm7x2x_sdcc_data);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-#ifdef CONFIG_HUAWEI_WIFI_SDCC 
+#ifdef CONFIG_HUAWEI_WIFI_SDCC
+	msm_sdcc_setup_gpio(2, 1);
 	msm_add_sdcc(2, &msm7x2x_sdcc_data_wifi);
 #endif 
 #endif
@@ -3334,14 +3401,15 @@ static void __init virtualkeys_init(void)
 
 static void __init msm7x2x_init(void)
 {
-	if (socinfo_init() < 0)
-		BUG();
 	msm_clock_init(msm_clocks_7x25, msm_num_clocks_7x25);
+	platform_add_devices(early_devices, ARRAY_SIZE(early_devices));
 
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	msm_serial_debug_init(MSM_UART3_PHYS, INT_UART3,
 			&msm_device_uart3.dev, 1);
 #endif
+
+#if defined(CONFIG_SMC91X)
 	if (machine_is_msm7x25_ffa() || machine_is_msm7x27_ffa()) {
 		smc91x_resources[0].start = 0x98000300;
 		smc91x_resources[0].end = 0x980003ff;
@@ -3357,6 +3425,7 @@ static void __init msm7x2x_init(void)
 				__func__);
 		}
 	}
+#endif
 
 	if (cpu_is_msm7x27())
 		msm7x2x_clock_data.max_axi_khz = 200000;
@@ -3413,6 +3482,9 @@ static void __init msm7x2x_init(void)
 		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
 	msm_device_gadget_peripheral.dev.platform_data = &msm_gadget_pdata;
 #endif
+#endif
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
+	msm_device_tsif.dev.platform_data = &tsif_platform_data;
 #endif
 
 	platform_add_devices(devices, ARRAY_SIZE(devices));
@@ -3655,6 +3727,10 @@ static void __init msm7x2x_map_io(void)
        //msm_clock_init(msm_clocks_7x25, msm_num_clocks_7x25);
        /*qinwei 20100709, Update for 6010 Baseline end*/
 	msm_msm7x2x_allocate_memory_regions();
+
+	if (socinfo_init() < 0)
+		BUG();
+
 }
 
 

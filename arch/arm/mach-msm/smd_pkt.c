@@ -49,9 +49,8 @@ struct smd_pkt_dev {
 	struct smd_channel *ch;
 	struct mutex ch_lock;
 	struct mutex rx_lock;
+	struct mutex tx_lock;
 	struct mutex is_open_lock;
-	struct workqueue_struct *ch_wq;
-	struct work_struct ch_work;
 	wait_queue_head_t ch_wait_queue;
 	wait_queue_head_t ch_opened_wait_queue;
 
@@ -59,7 +58,6 @@ struct smd_pkt_dev {
 
 	unsigned char tx_buf[MAX_BUF_SIZE];
 	unsigned char rx_buf[MAX_BUF_SIZE];
-	int bytes_read;
 	int is_open;
 
 	struct notifier_block nb;
@@ -70,6 +68,7 @@ struct smd_pkt_dev {
 
 struct class *smd_pkt_classp;
 static dev_t smd_pkt_number;
+static void check_and_wakeup(struct smd_pkt_dev *smd_pkt_devp);
 
 #define DEBUG
 #undef DEBUG
@@ -95,15 +94,9 @@ do { \
 
 static void clean_and_signal(struct smd_pkt_dev *smd_pkt_devp)
 {
-	flush_workqueue(smd_pkt_devp->ch_wq);
-
 	mutex_lock(&smd_pkt_devp->has_reset_lock);
 	smd_pkt_devp->has_reset = 1;
 	mutex_unlock(&smd_pkt_devp->has_reset_lock);
-
-	mutex_lock(&smd_pkt_devp->rx_lock);
-	smd_pkt_devp->bytes_read = 0;
-	mutex_unlock(&smd_pkt_devp->rx_lock);
 
 	mutex_lock(&smd_pkt_devp->is_open_lock);
 	smd_pkt_devp->is_open = 0;
@@ -173,6 +166,7 @@ ssize_t smd_pkt_read(struct file *file,
 	int r;
 	int bytes_read;
 	struct smd_pkt_dev *smd_pkt_devp;
+	struct smd_channel *chl;
 
 	D(KERN_ERR "%s: read %i bytes\n",
 	  __func__, count);
@@ -182,8 +176,12 @@ ssize_t smd_pkt_read(struct file *file,
 	if (!smd_pkt_devp->ch)
 		return -EINVAL;
 
+	chl = smd_pkt_devp->ch;
+wait_for_packet:
 	r = wait_event_interruptible(smd_pkt_devp->ch_wait_queue,
-				     smd_pkt_devp->bytes_read |
+				     (smd_cur_packet_size(chl) > 0 &&
+				      smd_read_avail(chl) >=
+				      smd_cur_packet_size(chl)) |
 				     smd_pkt_devp->has_reset);
 
 	if (smd_pkt_devp->has_reset)
@@ -207,23 +205,30 @@ ssize_t smd_pkt_read(struct file *file,
 	/* Here we have a whole packet waiting for us */
 
 	mutex_lock(&smd_pkt_devp->rx_lock);
-	bytes_read = smd_pkt_devp->bytes_read;
-	smd_pkt_devp->bytes_read = 0;
-	mutex_unlock(&smd_pkt_devp->rx_lock);
+	bytes_read = smd_cur_packet_size(smd_pkt_devp->ch);
 
 	D(KERN_ERR "%s: after wait_event_interruptible bytes_read = %i\n",
 	  __func__, bytes_read);
+
+	if (bytes_read == 0 ||
+	    bytes_read < smd_read_avail(smd_pkt_devp->ch)) {
+		D(KERN_ERR "%s: Nothing to read\n", __func__);
+		mutex_unlock(&smd_pkt_devp->rx_lock);
+		goto wait_for_packet;
+	}
 
 	if (bytes_read > count) {
 		printk(KERN_ERR "packet size %i > buffer size %i, "
 		       "dropping packet!", bytes_read, count);
 		smd_read(smd_pkt_devp->ch, 0, bytes_read);
+		mutex_unlock(&smd_pkt_devp->rx_lock);
 		return -EINVAL;
 	}
 
 	/* smd_read and copy_to_user need to be merged to only do 1 copy */
 	if (smd_read(smd_pkt_devp->ch, smd_pkt_devp->rx_buf, bytes_read)
 	    != bytes_read) {
+		mutex_unlock(&smd_pkt_devp->rx_lock);
 		if (smd_pkt_devp->has_reset)
 			return -ENETRESET;
 
@@ -232,7 +237,7 @@ ssize_t smd_pkt_read(struct file *file,
 	}
 	D_DUMP_BUFFER("read: ", bytes_read, smd_pkt_devp->rx_buf);
 	r = copy_to_user(buf, smd_pkt_devp->rx_buf, bytes_read);
-
+	mutex_unlock(&smd_pkt_devp->rx_lock);
 	if (r > 0) {
 		printk(KERN_ERR "ERROR:%s:%i:%s: "
 		       "copy_to_user could not copy %i bytes.\n",
@@ -246,15 +251,8 @@ ssize_t smd_pkt_read(struct file *file,
 	D(KERN_ERR "%s: just read %i bytes\n",
 	  __func__, bytes_read);
 
-	/* Not all packet events get explictly handled, this doesn't
-	   matter if a constant stream of packets is streaming in, but
-	   eventually a packet will be received and we'll have missed
-	   the event. Queuing one more work item will catch this if
-	   its happened, but do nothing if it hasn't.
-	*/
-	queue_work(smd_pkt_devp->ch_wq, &smd_pkt_devp->ch_work);
-
-	D(KERN_ERR "%s: just queued more work\n", __func__);
+	/* check and wakeup read threads waiting on this device */
+	check_and_wakeup(smd_pkt_devp);
 
 	return bytes_read;
 }
@@ -302,6 +300,7 @@ ssize_t smd_pkt_write(struct file *file,
 
 	D_DUMP_BUFFER("write: ", count, buf);
 
+	mutex_lock(&smd_pkt_devp->tx_lock);
 	r = copy_from_user(smd_pkt_devp->tx_buf, buf, count);
 	if (r > 0) {
 		printk(KERN_ERR "ERROR:%s:%i:%s: "
@@ -310,6 +309,7 @@ ssize_t smd_pkt_write(struct file *file,
 		       __LINE__,
 		       __func__,
 		       r);
+		mutex_unlock(&smd_pkt_devp->tx_lock);
 		return r;
 	}
 
@@ -318,6 +318,7 @@ ssize_t smd_pkt_write(struct file *file,
 
 	r = smd_write(smd_pkt_devp->ch, smd_pkt_devp->tx_buf, count);
 	if (r != count) {
+		mutex_unlock(&smd_pkt_devp->tx_lock);
 		if (smd_pkt_devp->has_reset)
 			return -ENETRESET;
 
@@ -330,6 +331,7 @@ ssize_t smd_pkt_write(struct file *file,
 		       r);
 		return r;
 	}
+	mutex_unlock(&smd_pkt_devp->tx_lock);
 
 	D(KERN_ERR "%s: just wrote %i bytes\n",
 	       __func__, count);
@@ -337,46 +339,28 @@ ssize_t smd_pkt_write(struct file *file,
 	return count;
 }
 
-static void ch_work_func(struct work_struct *work)
+static void check_and_wakeup(struct smd_pkt_dev *smd_pkt_devp)
 {
-	/* unsigned char buf[MAX_BUF_SIZE]; */
 	int sz;
-	struct smd_pkt_dev *smd_pkt_devp = container_of(work,
-							struct smd_pkt_dev,
-							ch_work);
 
-	if (!smd_pkt_devp->ch)
+	if (!smd_pkt_devp || !smd_pkt_devp->ch)
 		return;
 
-	for (;;) {
-		sz = smd_cur_packet_size(smd_pkt_devp->ch);
-		if (sz == 0) {
-			D(KERN_ERR "%s: packet size is 0\n", __func__);
-			break;
-		}
-		if (sz > smd_read_avail(smd_pkt_devp->ch)) {
-			D(KERN_ERR "%s: packet size is %i - "
-			  "the whole packet isn't here\n",
-			  __func__, sz);
-			break;
-		}
-		if (sz > MAX_BUF_SIZE) {
-			smd_read(smd_pkt_devp->ch, 0, sz);
-			D(KERN_ERR "%s: packet size is %i - "
-			  "greater than max %i, dropping\n",
-			  __func__, sz, MAX_BUF_SIZE);
-			continue;
-		}
-
-		/* here we have a packet of size sz ready */
-
-		mutex_lock(&smd_pkt_devp->rx_lock);
-		smd_pkt_devp->bytes_read = sz;
-		mutex_unlock(&smd_pkt_devp->rx_lock);
-		wake_up_interruptible(&smd_pkt_devp->ch_wait_queue);
-		D(KERN_ERR "%s: after wake_up\n", __func__);
-		break;
+	sz = smd_cur_packet_size(smd_pkt_devp->ch);
+	if (sz == 0) {
+		D(KERN_ERR "%s: packet size is 0\n", __func__);
+		return;
 	}
+	if (sz > smd_read_avail(smd_pkt_devp->ch)) {
+		D(KERN_ERR "%s: packet size is %i - "
+		  "the whole packet isn't here\n",
+		  __func__, sz);
+		return;
+	}
+
+	/* here we have a packet of size sz ready */
+	wake_up_interruptible(&smd_pkt_devp->ch_wait_queue);
+	D(KERN_ERR "%s: after wake_up\n", __func__);
 }
 
 static void ch_notify(void *priv, unsigned event)
@@ -388,22 +372,9 @@ static void ch_notify(void *priv, unsigned event)
 
 	switch (event) {
 	case SMD_EVENT_DATA: {
-		int sz;
-		D(KERN_ERR "%s: data\n",
-		  __func__);
-		sz = smd_cur_packet_size(smd_pkt_devp->ch);
-		D(KERN_ERR "%s: data sz = %i\n",
-		  __func__, sz);
-		D(KERN_ERR "%s: smd_read_avail = %i\n",
-		  __func__, smd_read_avail(smd_pkt_devp->ch));
-		if ((sz > 0) && (sz <= smd_read_avail(smd_pkt_devp->ch))) {
-			queue_work(smd_pkt_devp->ch_wq,
-				   &smd_pkt_devp->ch_work);
-			D(KERN_ERR "%s: data just queued\n",
-			  __func__);
-		}
-		D(KERN_ERR "%s: data after queueing\n",
-		  __func__);
+		D(KERN_ERR "%s: data\n", __func__);
+		check_and_wakeup(smd_pkt_devp);
+		D(KERN_ERR "%s: data after check_and_wakeup\n", __func__);
 		break;
 	}
 	case SMD_EVENT_OPEN:
@@ -510,7 +481,6 @@ static int __init smd_pkt_init(void)
 {
 	int i;
 	int r;
-	unsigned char buf[32];
 
 	r = alloc_chrdev_region(&smd_pkt_number,
 			       0,
@@ -551,27 +521,13 @@ static int __init smd_pkt_init(void)
 
 		smd_pkt_devp[i]->i = i;
 
-		scnprintf(buf, 32, "pkt%i", i);
-		smd_pkt_devp[i]->ch_wq = create_singlethread_workqueue(buf);
-		if (&smd_pkt_devp[i]->ch_wq == 0) {
-			printk(KERN_ERR
-			       "%s:%i:%s: "
-			       "create_singlethread_workqueue() ret 0\n",
-			       __FILE__,
-			       __LINE__,
-			       __func__);
-			r = -ENOMEM;
-			goto error2;
-		}
-
 		init_waitqueue_head(&smd_pkt_devp[i]->ch_wait_queue);
 		smd_pkt_devp[i]->is_open = 0;
 		init_waitqueue_head(&smd_pkt_devp[i]->ch_opened_wait_queue);
-		INIT_WORK(&smd_pkt_devp[i]->ch_work,
-			  ch_work_func);
 
 		mutex_init(&smd_pkt_devp[i]->ch_lock);
 		mutex_init(&smd_pkt_devp[i]->rx_lock);
+		mutex_init(&smd_pkt_devp[i]->tx_lock);
 		mutex_init(&smd_pkt_devp[i]->is_open_lock);
 
 		cdev_init(&smd_pkt_devp[i]->cdev, &smd_pkt_fops);
@@ -587,7 +543,6 @@ static int __init smd_pkt_init(void)
 			       __LINE__,
 			       __func__,
 			       r);
-			destroy_workqueue(smd_pkt_devp[i]->ch_wq);
 			kfree(smd_pkt_devp[i]);
 			goto error2;
 		}
@@ -607,7 +562,6 @@ static int __init smd_pkt_init(void)
 			       __func__);
 			r = -ENOMEM;
 			cdev_del(&smd_pkt_devp[i]->cdev);
-			destroy_workqueue(smd_pkt_devp[i]->ch_wq);
 			kfree(smd_pkt_devp[i]);
 			goto error2;
 		}
@@ -625,7 +579,6 @@ static int __init smd_pkt_init(void)
 	if (i > 0) {
 		while (--i >= 0) {
 			cdev_del(&smd_pkt_devp[i]->cdev);
-			destroy_workqueue(smd_pkt_devp[i]->ch_wq);
 			kfree(smd_pkt_devp[i]);
 			device_destroy(smd_pkt_classp,
 				       MKDEV(MAJOR(smd_pkt_number), i));

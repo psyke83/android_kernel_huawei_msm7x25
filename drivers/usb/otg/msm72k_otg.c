@@ -40,7 +40,7 @@
 #define USB_LINK_RESET_TIMEOUT	(msecs_to_jiffies(10))
 #define DRIVER_NAME	"msm_otg"
 
-static void otg_reset(struct msm_otg *dev);
+static void otg_reset(struct otg_transceiver *xceiv);
 static void msm_otg_set_vbus_state(int online);
 
 struct msm_otg *the_msm_otg;
@@ -174,13 +174,31 @@ static int msm_otg_set_clk(struct otg_transceiver *xceiv, int on)
 }
 static void msm_otg_start_peripheral(struct otg_transceiver *xceiv, int on)
 {
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
+
 	if (!xceiv->gadget)
 		return;
 
-	if (on)
+	if (on) {
+		/* increment the clk reference count so that
+		 * it would be still on when disabled from
+		 * low power mode routine
+		 */
+		if (dev->pdata->pclk_required_during_lpm)
+			clk_enable(dev->hs_pclk);
+
 		usb_gadget_vbus_connect(xceiv->gadget);
-	else
+	} else {
+		atomic_set(&dev->chg_type, USB_CHG_TYPE__INVALID);
 		usb_gadget_vbus_disconnect(xceiv->gadget);
+
+		/* decrement the clk reference count so that
+		 * it would be off when disabled from
+		 * low power mode routine
+		 */
+		if (dev->pdata->pclk_required_during_lpm)
+			clk_disable(dev->hs_pclk);
+	}
 }
 
 static void msm_otg_start_host(struct otg_transceiver *xceiv, int on)
@@ -190,8 +208,34 @@ static void msm_otg_start_host(struct otg_transceiver *xceiv, int on)
 	if (!xceiv->host)
 		return;
 
+	/* increment or decrement the clk reference count
+	 * to avoid usb h/w lockup issues when low power
+	 * mode is initiated and vbus is on.
+	 */
+	if (dev->pdata->pclk_required_during_lpm) {
+		if (on)
+			clk_enable(dev->hs_pclk);
+		else
+			clk_disable(dev->hs_pclk);
+	}
+
 	if (dev->start_host)
 		dev->start_host(xceiv->host, on);
+}
+
+static int msm_otg_are_interrupts_pending(struct msm_otg *dev)
+{
+	unsigned otgsc = readl(USB_OTGSC);
+
+	/* check if there are any pending otg interrupts */
+	if (((otgsc & OTGSC_INTR_MASK) >> 8) & otgsc) {
+		pr_info("%s: Interrupts while suspending phy: "
+			"otgsc:%08x\n", __func__, otgsc);
+		return 1;
+	}
+
+	return 0;
+
 }
 
 static int msm_otg_suspend(struct msm_otg *dev)
@@ -199,19 +243,20 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	unsigned long timeout;
 	int vbus = 0;
 	unsigned otgsc;
+	enum chg_type curr_chg = atomic_read(&dev->chg_type);
 
 	disable_irq(dev->irq);
 	if (atomic_read(&dev->in_lpm))
 		goto out;
 
-	/* Don't reset if mini-A cable is connected */
-	if (!is_host())
-		otg_reset(dev);
-
 	/* In case of fast plug-in and plug-out inside the otg_reset() the
 	 * servicing of BSV is missed (in the window of after phy and link
-	 * reset). Handle it if any missing bsv is detected */
-	if (is_b_sess_vld() && !is_host()) {
+	 * reset). Handle it if any missing bsv is detected.
+	 * Ignore BSV, as it may remain set while using debugfs to change modes
+	 */
+	if (is_b_sess_vld() && !is_host() &&
+				curr_chg != USB_CHG_TYPE__WALLCHARGER &&
+				(dev->pdata->otg_mode == OTG_ID)) {
 		otgsc = readl(USB_OTGSC);
 		writel(otgsc, USB_OTGSC);
 		pr_info("%s:Process mising BSV\n", __func__);
@@ -221,8 +266,17 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	}
 
 	ulpi_read(dev, 0x14);/* clear PHY interrupt latch register */
-	/* If there is no pmic notify support turn on phy comparators. */
-	if (!dev->pmic_notif_supp)
+	/*
+	 * Turn on PHY comparators if PMIC notifications are not available.
+	 *
+	 * PMIC notifications are designed to receive VBUS high only. We
+	 * should rely on PHY comparators for VBUS low interrupt. This does
+	 * not matter if we are connected to host. Because bus suspend is
+	 * not implemented. But if we don't enable PHY comparators and allow
+	 * LPM when wall charger is connected, we will not detect charger
+	 * disconnection.
+	 */
+	if (curr_chg == USB_CHG_TYPE__WALLCHARGER || !dev->pmic_notif_supp)
 		ulpi_write(dev, 0x01, 0x30);
 	ulpi_write(dev, 0x08, 0x09);/* turn off PLL on integrated phy */
 
@@ -230,11 +284,19 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	disable_phy_clk();
 	while (!is_phy_clk_disabled()) {
 		if (time_after(jiffies, timeout)) {
+			if (msm_otg_are_interrupts_pending(dev))
+				goto out;
+
 			pr_err("%s: Unable to suspend phy\n", __func__);
-			otg_reset(dev);
+			/* check if there any pending interrupts
+			 * before re-setting the h/w
+			 */
+			otg_reset(&dev->otg);
 			goto out;
 		}
 		msleep(1);
+		if (msm_otg_are_interrupts_pending(dev))
+			goto out;
 	}
 
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
@@ -331,7 +393,7 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 		while (is_phy_clk_disabled()) {
 			if (time_after(jiffies, timeout)) {
 				pr_err("%s: Unable to wakeup phy\n", __func__);
-				otg_reset(dev);
+				otg_reset(&dev->otg);
 				break;
 			}
 			udelay(10);
@@ -642,8 +704,9 @@ static int msm_otg_phy_reset(struct msm_otg *dev)
 	return 0;
 }
 
-static void otg_reset(struct msm_otg *dev)
+static void otg_reset(struct otg_transceiver *xceiv)
 {
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 	unsigned long timeout;
 
 	clk_enable(dev->hs_clk);
@@ -684,6 +747,70 @@ static void otg_reset(struct msm_otg *dev)
 		enable_idgnd(dev);
 }
 
+#ifdef CONFIG_DEBUG_FS
+static int otg_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+static ssize_t otg_mode_write(struct file *file, const char __user *buf,
+				size_t count, loff_t *ppos)
+{
+	struct msm_otg *dev = file->private_data;
+	struct otg_transceiver *otg = &dev->otg;
+	int ret = count;
+
+	if (otg->host) {
+		pr_err("%s: mode switch not supported with host mode\n",
+						__func__);
+		return -EINVAL;
+	}
+
+	if (!memcmp(buf, "none", count - 1)) {
+		msm_otg_start_peripheral(otg, 0);
+	} else if (!memcmp(buf, "peripheral", count - 1)) {
+		if (atomic_read(&dev->in_lpm))
+			msm_otg_set_suspend(otg, 0);
+		msm_otg_start_peripheral(otg, 1);
+	} else {
+		pr_info("%s: unknown mode specified\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+const struct file_operations otgfs_fops = {
+	.open	= otg_open,
+	.write	= otg_mode_write,
+};
+
+struct dentry *otg_debug_root;
+struct dentry *otg_debug_mode;
+
+static int otg_debugfs_init(struct msm_otg *dev)
+{
+	otg_debug_root = debugfs_create_dir("otg", NULL);
+	if (!otg_debug_root)
+		return -ENOENT;
+
+	otg_debug_mode = debugfs_create_file("mode", 0222,
+						otg_debug_root, dev,
+						&otgfs_fops);
+	if (!otg_debug_mode) {
+		debugfs_remove(otg_debug_root);
+		otg_debug_root = NULL;
+		return -ENOENT;
+	}
+
+	return 0;
+}
+
+static void otg_debugfs_cleanup(void)
+{
+       debugfs_remove(otg_debug_mode);
+       debugfs_remove(otg_debug_root);
+}
+#endif
 static int __init msm_otg_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -801,7 +928,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		}
 	}
 
-	otg_reset(dev);
+	otg_reset(&dev->otg);
 
 	ret = request_irq(dev->irq, msm_otg_irq, IRQF_SHARED,
 					"msm_otg", dev);
@@ -820,6 +947,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	dev->otg.set_host = msm_otg_set_host;
 	dev->otg.set_suspend = msm_otg_set_suspend;
 	dev->set_clk = msm_otg_set_clk;
+	dev->reset = otg_reset;
 	if (otg_set_transceiver(&dev->otg)) {
 		WARN_ON(1);
 		goto free_otg_irq;
@@ -836,8 +964,20 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 			goto free_otg_irq;
 		}
 	}
-
+#ifdef CONFIG_DEBUG_FS
+	ret = otg_debugfs_init(dev);
+	if (ret) {
+		pr_info("%s: otg_debugfs_init failed\n", __func__);
+		goto free_vbus_irq;
+	}
+#endif
 	return 0;
+
+#ifdef CONFIG_DEBUG_FS
+free_vbus_irq:
+	if (vbus_on_irq)
+		free_irq(vbus_on_irq, 0);
+#endif
 free_otg_irq:
 	free_irq(dev->irq, dev);
 free_regs:
@@ -865,6 +1005,9 @@ static int __exit msm_otg_remove(struct platform_device *pdev)
 {
 	struct msm_otg *dev = the_msm_otg;
 
+#ifdef CONFIG_DEBUG_FS
+	otg_debugfs_cleanup();
+#endif
 	if (dev->pmic_notif_supp)
 		dev->pdata->pmic_notif_deinit();
 
