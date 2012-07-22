@@ -591,7 +591,6 @@ config HUAWEI_TOUCHSCREEN_EXTRA_KEY
 	  Smart phone. These hacks are required in order
 	  to use touchscreen extra key.
 
-
 config TOUCHSCREEN_CY8C_TS
 	tristate "Cypress TMA300-TMG200 based touchscreens"
 	depends on I2C

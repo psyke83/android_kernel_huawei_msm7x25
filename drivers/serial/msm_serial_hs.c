@@ -913,7 +913,7 @@ static void msm_hs_dmov_rx_callback(struct msm_dmov_cmd *cmd_ptr,
 	msm_uport = container_of(cmd_ptr, struct msm_hs_port, rx.xfer);
 
 #ifdef CONFIG_HUAWEI_KERNEL
-    /* Change to HI_SOFTIRQ to schedule */
+	/* Change to HI_SOFTIRQ to schedule */
 	tasklet_hi_schedule(&msm_uport->rx.tlet);
 #else
 	tasklet_schedule(&msm_uport->rx.tlet);
@@ -1181,7 +1181,7 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		/* TX FIFO is empty */
 		msm_uport->imr_reg &= ~UARTDM_ISR_TXLEV_BMSK;
 #ifdef CONFIG_HUAWEI_FEATURE_U8220_BLUETOOTH
-        msm_uport->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
+		msm_uport->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
 #endif
 		msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 		if (!msm_hs_check_clock_off_locked(uport))
@@ -1704,8 +1704,8 @@ static struct uart_ops msm_hs_ops = {
 
 void hci_trigger_hs_port_tx_ready(void){
 	if (g_msm_hs_port  != NULL){
-	    g_msm_hs_port->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
-	    msm_hs_write(&g_msm_hs_port->uport, UARTDM_IMR_ADDR, g_msm_hs_port->imr_reg);
+		g_msm_hs_port->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
+		msm_hs_write(&g_msm_hs_port->uport, UARTDM_IMR_ADDR, g_msm_hs_port->imr_reg);
 	}
 }
 

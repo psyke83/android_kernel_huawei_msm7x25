@@ -146,9 +146,16 @@ config HUAWEI_FOTA_UPDATA
 	  if Y ,select HUAWEI_FOTA_UPDATA, this supprot fota updata
 
 config USB_AUTO_INSTALL
+	depends on HUAWEI_USB_FUNCTION=y
 	bool "usb auto install"
 	default n
 	help
 	  if Y ,select USB_AUTO_INSTALL
+
+config HUAWEI_BCM4329
+	bool "huawei bcm4329 support"
+	default y
+	help
+	  Say Y here if your Huawei device uses the BCM4329 chipset
 
 endif

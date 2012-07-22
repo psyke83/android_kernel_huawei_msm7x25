@@ -802,8 +802,10 @@ static int huawei_battery_probe(struct platform_device *pdev)
 /* the subcommand is unprobe the usb device when switch 
   the mobile to usb download mode by diag. 
 */
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 #define RPC_UNPROBE_USB_COMPOSITION_PROC   6
 extern void unprobe_usb_composition(void);
+#endif
 
 struct rpc_batt_mtoa_cable_status_update_args {
 	int status;
@@ -850,11 +852,13 @@ static int handle_battery_call(struct msm_rpc_server *server,
 
 		return 0;
 	}
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
   /* the subcommand is call by function toolsdiag_dload_jump in arm9 toolsdiag.c. */
   case RPC_UNPROBE_USB_COMPOSITION_PROC:{
     unprobe_usb_composition();
     return 0;
   }
+#endif
 	default:
 		printk(KERN_ERR "%s: program 0x%08x:%d: unknown procedure %d\n",
 		       __FUNCTION__, req->prog, req->vers, req->procedure);

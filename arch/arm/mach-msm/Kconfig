@@ -300,7 +300,7 @@ config MACH_MSM8X60_FFA
 	help
 	  Support for the Qualcomm MSM8x60 FFA eval board.
 
-# add CONFIG_HUAWEI_KERNEL MACRO define in kernel	
+# add CONFIG_HUAWEI_KERNEL MACRO define in kernel
 config MACH_MSM7X25_U8100
 	depends on ARCH_MSM7X25
 	depends on !MSM_STACKED_MEMORY
@@ -488,7 +488,6 @@ endmenu
 config  HUAWEI_KERNEL
 	bool "HUAWEI Product"
 	depends on ARCH_MSM7X25	
-	
 
 config MSM_STACKED_MEMORY
 	bool "Stacked Memory"
@@ -713,6 +712,7 @@ config HUAWEI_SETTING_TIMER_FOR_VIBRATOR_OFF
 	default n
 	help
 	  Say Y here if you want to support setting timer for vibrator off.
+
 config HTC_HEADSET
 	tristate "HTC 2 Wire detection driver"
 	default n

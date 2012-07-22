@@ -270,7 +270,6 @@ config MOUSE_VSXXXAA
 	  described in the source file). This driver also works with the
 	  digitizer (VSXXX-AB) DEC produced.
 
-
 config MOUSE_OFN_AVAGO_A320
 	tristate "Avago A320 Optical finger navigation"
 	depends on I2C_MSM

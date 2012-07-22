@@ -47,7 +47,7 @@
 #include "mdp.h"
 #include "mdp4.h"
 #ifdef CONFIG_HUAWEI_KERNEL
-#define LCD_DEFAULT_BK_LEV              (104) 
+#define LCD_DEFAULT_BK_LEV		(104) 
 #endif
 
 #ifdef CONFIG_HUAWEI_EVALUATE_POWER_CONSUMPTION
@@ -59,7 +59,6 @@
 #define INIT_IMAGE_FILE "/logo.rle"
 #else
 #define WAITTING_IMAGE_FILE	"/waitting.rle"
-
 #endif
 extern int load_565rle_image(char *filename);
 #endif
@@ -249,7 +248,7 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	mfd->panel_info.frame_count = 0;
 #ifdef CONFIG_HUAWEI_KERNEL
-    mfd->bl_level = LCD_DEFAULT_BK_LEV;
+	mfd->bl_level = LCD_DEFAULT_BK_LEV;
 #else
 	mfd->bl_level = mfd->panel_info.bl_max;
 #endif
@@ -514,7 +513,7 @@ void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl, u32 save)
 			pdata->set_backlight(mfd);
 
 #ifdef CONFIG_HUAWEI_EVALUATE_POWER_CONSUMPTION
-            huawei_rpc_current_consuem_notify(EVENT_LCD_BACKLIGHT, bkl_lvl);
+			huawei_rpc_current_consuem_notify(EVENT_LCD_BACKLIGHT, bkl_lvl);
 #endif
 
 			if (!save)
@@ -544,11 +543,10 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on) {
 #ifndef CONFIG_HUAWEI_KERNEL
-            mdelay(100);
+			mdelay(100);
 #else 
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(HZ/10); 
-            
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule_timeout(HZ/10); 
 #endif
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
@@ -582,11 +580,12 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			mfd->op_enable = FALSE;
 			curr_pwr_state = mfd->panel_power_on;
 			mfd->panel_power_on = FALSE;
+
 #ifndef CONFIG_HUAWEI_KERNEL
-            mdelay(100);
+			mdelay(100);
 #else
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(HZ/10); 
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule_timeout(HZ/10); 
 #endif
 
 			ret = pdata->off(mfd->pdev);
@@ -767,7 +766,7 @@ static int __init parse_tag_fota_mode(const struct tag *tag)
 __tagtable(ATAG_BOOT_FOTA_MODE, parse_tag_fota_mode);
 int fb_get_fota_mode(void)
 {
-    return fota_mode;
+	return fota_mode;
 }
 EXPORT_SYMBOL(fb_get_fota_mode);
 #endif
@@ -776,7 +775,7 @@ EXPORT_SYMBOL(fb_get_fota_mode);
 int register_framebuffer_flag = 0;
 int from_msm_fb_register(void)
 {
-    return register_framebuffer_flag;
+	return register_framebuffer_flag;
 }
 EXPORT_SYMBOL(from_msm_fb_register);
 #endif
@@ -1019,7 +1018,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	}
 /* Set it true,don't update black screen */
 #ifdef CONFIG_HUAWEI_KERNEL
-    register_framebuffer_flag = 1;
+	register_framebuffer_flag = 1;
 #endif
 	if (register_framebuffer(fbi) < 0) {
 		if (mfd->lut_update)
@@ -1057,7 +1056,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 #endif
 /* Set it flase,recovery */
 #ifdef CONFIG_HUAWEI_KERNEL
-    register_framebuffer_flag = 0;
+	register_framebuffer_flag = 0;
 #endif
 #endif
 	ret = 0;
@@ -2277,8 +2276,8 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_page_protection fb_page_protection;
 #ifdef CONFIG_HUAWEI_KERNEL
 	struct msm_fb_panel_data *pdata;
-    unsigned int contrast_val = 0;
-#endif    
+	unsigned int contrast_val = 0;
+#endif
 	int ret = 0;
 
 	switch (cmd) {
@@ -2479,20 +2478,20 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 #endif
 		break;
 #ifdef CONFIG_HUAWEI_KERNEL
-    case MSMFB_SET_DISPLAY_CONTRAST:
+	case MSMFB_SET_DISPLAY_CONTRAST:
 
-        pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-        ret = copy_from_user(&contrast_val, argp, sizeof(unsigned int));
-        
-        if(ret)
-            return ret;
-        if((pdata) && (pdata->set_contrast))
-        {
-            pdata->set_contrast(mfd, contrast_val);
-        }
-        ret = 0;
-        break;
-#endif        
+		pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+		ret = copy_from_user(&contrast_val, argp, sizeof(unsigned int));
+
+		if(ret)
+			return ret;
+		if((pdata) && (pdata->set_contrast))
+		{
+			pdata->set_contrast(mfd, contrast_val);
+		}
+		ret = 0;
+		break;
+#endif
 
 	default:
 		MSM_FB_INFO("MDP: unknown ioctl (cmd=%d) received!\n", cmd);

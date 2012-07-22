@@ -94,7 +94,6 @@ void clk_disable(struct clk *clk)
 {
 	unsigned long flags;
 	spin_lock_irqsave(&clocks_lock, flags);
-	
 	//BUG_ON(clk->count == 0);
 	WARN(clk->count == 0,
 		"#### clk_disable: clk name = %s, ID = %d, count = %d\n",clk->name, clk->id, clk->count);

@@ -277,8 +277,8 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 
 		for (i = 0; i < tpl_link; i++) {
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
-		        mdelay(1);
-#endif                
+			mdelay(1);
+#endif
 			ret = mmc_io_rw_direct(card, 0, 0,
 					       ptr + i, 0, &this->data[i]);
 			if (ret)

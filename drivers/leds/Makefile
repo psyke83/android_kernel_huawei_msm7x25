@@ -30,7 +30,7 @@ obj-$(CONFIG_LEDS_MSM_PMIC)             += leds-msm-pmic.o
 obj-$(CONFIG_LEDS_DA903X)		+= leds-da903x.o
 obj-$(CONFIG_LEDS_WM831X_STATUS)	+= leds-wm831x-status.o
 obj-$(CONFIG_LEDS_WM8350)		+= leds-wm8350.o
-obj-$(CONFIG_LEDS_HUAWEI_KEY) += leds-msm-pmic.o
+obj-$(CONFIG_LEDS_HUAWEI_KEY)	+= leds-msm-pmic.o
 
 obj-$(CONFIG_LEDS_PWM)			+= leds-pwm.o
 obj-$(CONFIG_LEDS_PMIC8058)		+= leds-pmic8058.o

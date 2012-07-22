@@ -15,6 +15,7 @@
 
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+
 #include <linux/dma-mapping.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
@@ -848,7 +849,6 @@ struct clk msm_clocks_7x25[] = {
 };
 
 unsigned msm_num_clocks_7x25 = ARRAY_SIZE(msm_clocks_7x25);
-
 
 #define ATAG_CAMERA_ID 0x4d534D74
 /* setup calls mach->fixup, then parse_tags, parse_cmdline

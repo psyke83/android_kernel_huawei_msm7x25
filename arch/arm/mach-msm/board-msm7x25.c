@@ -86,37 +86,40 @@
 #ifdef CONFIG_ARCH_MSM7X27
 #include <linux/msm_kgsl.h>
 #endif
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 #include <linux/wifi_tiwlan.h>
 #include <linux/skbuff.h>
 #endif
 #endif
 
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_KERNEL
 #include "../../../drivers/usb/gadget/usb_switch_huawei.h"
 #include "../../../arch/arm/mach-msm/proc_comm.h"
 #include "smd_private.h"
-
-#ifdef CONFIG_HUAWEI_KERNEL
 #include <linux/touch_platform_config.h>
 #endif
-#define USB_SERIAL_LEN 20
-smem_huawei_vender usb_para_data;
 
 #ifdef CONFIG_HUAWEI_KERNEL
 unsigned int usb_boot_mode = 0;
 static char buf_virtualkey[500];
 static ssize_t  buf_vkey_size=0;
 #endif
-/* keep usb parameters transfered from modem */
-app_usb_para usb_para_info;
+
 #ifdef CONFIG_HUAWEI_KERNEL
 atomic_t touch_detected_yet = ATOMIC_INIT(0); 
 #define MSM_7x25_TOUCH_INT       29
 #define MSM_7x25_RESET_PIN 		 96
 struct vreg *vreg_gp5 = NULL;
 #endif
+
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
+
+#define USB_SERIAL_LEN 20
+smem_huawei_vender usb_para_data;
+
+/* keep usb parameters transfered from modem */
+app_usb_para usb_para_info;
 
 /* all the pid used by mobile */
 /* new requirement: usb tethering */
@@ -127,7 +130,7 @@ usb_pid_stru usb_pid_array[]={
 
 /* pointer to the member of usb_pid_array[], according to the current product */
 usb_pid_stru *curr_usb_pid_ptr = &usb_pid_array[0];
-#endif  /* #ifdef CONFIG_USB_AUTO_INSTALL */
+#endif  /* #ifdef CONFIG_HUAWEI_USB_FUNCTION */
 
 
 
@@ -250,7 +253,7 @@ static struct usb_composition usb_func_composition[] = {
 	},
 #endif
 
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
     /* new requirement: usb tethering */
     {
         /* MSC, WLAN */
@@ -320,7 +323,7 @@ static struct usb_composition usb_func_composition[] = {
 		.adb_functions	    = 0x41276,
 	},
 
-#endif  /* CONFIG_USB_AUTO_INSTALL */
+#endif  /* CONFIG_HUAWEI_USB_FUNCTION */
 
 #ifdef CONFIG_USB_ANDROID_CDC_ECM
 	{
@@ -351,25 +354,25 @@ static struct usb_composition usb_func_composition[] = {
 #endif
 };
 static struct android_usb_platform_data android_usb_pdata = {
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 	.vendor_id	= HUAWEI_VID,
 /* < google_usb_drv */	
 //	.vendor_id	= 0x18D1, /* 0x05C6, */
 /* google_usb_drv > */	
 #else	
 	.vendor_id	= 0x05C6,
-#endif  /* CONFIG_USB_AUTO_INSTALL */
+#endif  /* CONFIG_HUAWEI_USB_FUNCTION */
 	.version	= 0x0100,
 	.compositions   = usb_func_composition,
 	.num_compositions = ARRAY_SIZE(usb_func_composition),
 /* add new pid config for google */
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 	.product_name	= "Ideos",
 	.manufacturer_name = "Huawei Incorporated",
 #else	
 	.product_name	= "Qualcomm HSUSB Device",
 	.manufacturer_name = "Qualcomm Incorporated",
-#endif  /* CONFIG_USB_AUTO_INSTALL */
+#endif  /* CONFIG_HUAWEI_USB_FUNCTION */
 	.nluns = 1,
 };
 static struct platform_device android_usb_device = {
@@ -1093,7 +1096,7 @@ static unsigned bt_config_power_on[] = {
 	GPIO_CFG(71, 1, GPIO_OUTPUT, GPIO_PULL_DOWN, GPIO_2MA),	/* PCM_CLK */
 
     GPIO_CFG(88, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
     GPIO_CFG(109, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),  /* BT_REG_ON */
 #endif
 #endif
@@ -1118,7 +1121,7 @@ static unsigned bt_config_power_off[] = {
 	GPIO_CFG(70, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),	/* PCM_SYNC */
 	GPIO_CFG(71, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),	/* PCM_CLK */
     GPIO_CFG(88, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),	/* reset */
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
     GPIO_CFG(109, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA), /* BT_REG_ON */
 #endif
 	GPIO_CFG(83, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),	/* HOST_WAKE */
@@ -1143,7 +1146,7 @@ static int bluetooth_power(int on)
 			}
 		}
 
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
         printk(KERN_ERR "bt power on");
         rc = gpio_direction_output(109, 1);  /*bt on :109 -->1*/
         if (rc) 
@@ -1163,7 +1166,7 @@ static int bluetooth_power(int on)
         
 	} else {
         rc = gpio_direction_output(88, 0);  /*btoff:88 -->0*/
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
         if (rc) 
         {
             printk(KERN_ERR "%s:  bt power off fail (%d)\n",
@@ -1195,13 +1198,13 @@ static int bluetooth_power(int on)
 
 static void __init bt_power_init(void)
 {
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 	int pin = 0, rc = 0;
 #endif
 
 	msm_bt_power_device.dev.platform_data = &bluetooth_power;
 
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 	for (pin = 0; pin < ARRAY_SIZE(bt_config_power_on); pin++) {
 		rc = gpio_tlmm_config(bt_config_power_on[pin],
 				      GPIO_ENABLE);
@@ -2295,7 +2298,7 @@ static struct platform_device huawei_device_detect = {
 
 
 static struct platform_device *devices[] __initdata = {
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 	&msm_wlan_ar6000,
 #endif
@@ -2459,7 +2462,7 @@ static void __init msm7x2x_init_host(void)
 #ifdef CONFIG_MMC
 static void sdcc_gpio_init(void)
 {
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 	int rc = 0;	
 	unsigned gpio_pin = 124;
@@ -2578,7 +2581,7 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 	}
 
 	if (!vreg_sts) {
-        /*wifi ¨¦?¦Ì?2??¨²¡ä?¡ä|¡ä|¨¤¨ª,¨¨?SD?¡§D¨¨¨°a?¨²¡ä?¡ä|¨¦?¦Ì?,??DT??vreg_mmc*/
+        /*wifi \A8\A6?\A6\CC?2??\A8\B2\A1\E4?\A1\E4|\A1\E4|\A8\A4\A8\AA,\A8\A8?SD?\A1\A7D\A8\A8\A8\B0a?\A8\B2\A1\E4?\A1\E4|\A8\A6?\A6\CC?,??DT??vreg_mmc*/
         //rc = vreg_set_level(vreg_mmc, 2850);
         if (!rc)
             //rc = vreg_enable(vreg_mmc);
@@ -2637,7 +2640,7 @@ static struct mmc_platform_data msm7x2x_sdcc_data_wifi = {
 
 #define WLAN_SKB_BUF_NUM	16
 
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 static unsigned wlan_wakes_msm[] = {
     GPIO_CFG(17, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA) };
 
@@ -2676,7 +2679,7 @@ static void *bcm_wifi_mem_prealloc(int section, unsigned long size)
 	return wifi_mem_array[section].mem_ptr;
 }
 
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 static int bcm_wifi_set_power(int enable)
 {
 	int ret = 0;
@@ -2810,7 +2813,7 @@ int __init bcm_init_wifi_mem(void)
 	return 0;
 }
 
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 struct wifi_platform_data {     
 void *(*mem_prealloc)(int section, unsigned long size);
 };
@@ -2819,14 +2822,14 @@ void *(*mem_prealloc)(int section, unsigned long size);
 static struct wifi_platform_data bcm_wifi_control = {
 	.mem_prealloc	= bcm_wifi_mem_prealloc,
 /* < Porting for switch bcm4319 to 4329, hanshirong 20101218 begin */
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 	.set_power	=bcm_wifi_set_power,
 #endif
 /* Porting for switch bcm4319 to 4329, hanshirong 20101218 end > */
 };
 
 static struct platform_device bcm_wifi_device = {
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 /* < Porting for switch bcm4319 to 4329, hanshirong 20101218 begin */
         /* bcm4329_wlan device */
         .name           = "bcm4329_wlan",
@@ -2864,7 +2867,7 @@ static void __init msm7x2x_init_mmc(void)
 #endif
 
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
-#ifdef HUAWEI_BCM4329
+#ifdef CONFIG_HUAWEI_BCM4329
 	bcm_wifi_init_gpio_mem();
 #else
 	bcm_init_wifi_mem();
@@ -3051,7 +3054,7 @@ static void proc_factory_para(void)
 } 
 #endif
 
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 /* provide a method to map pid_index to usb_pid, 
  * pid_index is kept in NV(4526). 
  * At power up, pid_index is read in modem and transfer to app in share memory.
@@ -3263,7 +3266,7 @@ char* get_product_name(void)
   }
 }
 
-#endif  /* CONFIG_USB_AUTO_INSTALL */
+#endif  /* CONFIG_HUAWEI_USB_FUNCTION */
 /* add virtual keys fucntion */
 /* same product use same config for virtual key */
 static ssize_t synaptics_virtual_keys_show(struct kobject *kobj,
@@ -3387,9 +3390,9 @@ static void __init msm7x2x_init(void)
 	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 #endif
 
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
     proc_usb_para();
-#endif  /* #ifdef CONFIG_USB_AUTO_INSTALL */
+#endif  /* #ifdef CONFIG_HUAWEI_USB_FUNCTION */
 
     /* init the factory para in kernel */
 #ifdef CONFIG_HUAWEI_KERNEL
@@ -3455,7 +3458,6 @@ static void __init msm7x2x_init(void)
 #endif
 	lcdc_gpio_init();
 	msm_fb_add_devices();
-	rmt_storage_add_ramfs();
 #ifdef CONFIG_USB_EHCI_MSM
 	msm7x2x_init_host();
 #endif

@@ -2271,7 +2271,6 @@ config FB_MSM_LCDC_AUTO_DETECT
 	select FB_MSM_LCDC_PANEL
 	default n
 
-
 config FB_MSM_LCDC_GORDON_VGA
 	bool
 	select FB_MSM_LCDC_PANEL

@@ -29,7 +29,7 @@
 
 #ifdef CONFIG_USB_AUTO_INSTALL
 #include "usb_switch_huawei.h"
-#endif  
+#endif
 
 
 /*
@@ -967,8 +967,8 @@ static int  composite_bind(struct usb_gadget *gadget)
 	int				status = -ENOMEM;
 
 #ifdef CONFIG_USB_AUTO_INSTALL
-    USB_PR("%s begin\n", __func__);
-#endif 
+	USB_PR("%s begin\n", __func__);
+#endif
 
 	cdev = kzalloc(sizeof *cdev, GFP_KERNEL);
 	if (!cdev)
@@ -1034,7 +1034,7 @@ static int  composite_bind(struct usb_gadget *gadget)
 
 	INFO(cdev, "%s ready\n", composite->name);
 #ifdef CONFIG_USB_AUTO_INSTALL
-    USB_PR("%s finish\n", __func__);
+	USB_PR("%s finish\n", __func__);
 #endif 
 	return 0;
 

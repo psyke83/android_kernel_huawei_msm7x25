@@ -165,7 +165,7 @@ void bluesleep_sleep_wakeup(void)
 		/*Activating UART */
 		hsuart_power(1);
 	}
-    #ifdef HUAWEI_BCM4329
+    #ifdef CONFIG_HUAWEI_BCM4329
     else
     {
         /*Tx idle, Rx busy, we must also make host_wake asserted, that is low
@@ -361,7 +361,7 @@ static int bluesleep_start(void)
 
 	/* assert BT_WAKE */
 	gpio_set_value(bsi->ext_wake, 0);
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
     retval = request_irq(bsi->host_wake_irq, bluesleep_hostwake_isr,
                 IRQF_DISABLED | IRQF_TRIGGER_FALLING,
                 "bluetooth hostwake", NULL);

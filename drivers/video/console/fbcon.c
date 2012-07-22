@@ -394,8 +394,7 @@ static void fb_flashcursor(struct work_struct *work)
 		CM_ERASE : CM_DRAW;
 	ops->cursor(vc, info, mode, softback_lines, get_color(vc, info, c, 1),
 		    get_color(vc, info, c, 0));
-
-    release_console_sem();
+	release_console_sem();
 #endif
 }
 
@@ -628,9 +627,9 @@ static void fbcon_prepare_logo(struct vc_data *vc, struct fb_info *info,
 		fbcon_clear_margins(vc, 0);
 /* Call from msm_fb_register() ,don't update LCD*/
 #ifdef CONFIG_HUAWEI_KERNEL
-        if(!from_msm_fb_register())
-#endif        
-        	update_screen(vc);
+		if(!from_msm_fb_register())
+#endif
+			update_screen(vc);
 	}
 
 	if (save) {
@@ -1318,8 +1317,8 @@ static void fbcon_cursor(struct vc_data *vc, int mode)
 
 	ops->cursor(vc, info, mode, y, get_color(vc, info, c, 1),
 		    get_color(vc, info, c, 0));
-    vbl_cursor_cnt = CURSOR_DRAW_DELAY;
-#else    
+	vbl_cursor_cnt = CURSOR_DRAW_DELAY;
+#else
 	vbl_cursor_cnt = CURSOR_DRAW_DELAY;
 #endif
 }

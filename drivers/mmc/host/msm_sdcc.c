@@ -77,7 +77,7 @@ static int msmsdcc_auto_suspend(struct mmc_host *, int);
 #endif
 
 static unsigned int msmsdcc_pwrsave = 1;
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 static unsigned int wifi_chip_is_bcm = 0;
 #endif
 
@@ -1353,7 +1353,7 @@ set_polling(struct device *dev, struct device_attribute *attr,
 		if (host->pdev_id == SDCC_WIFI_SLOT) {
 		printk("%s: no need to enable polling for slot 2 \n",__FUNCTION__);
 		mmc->caps &= ~MMC_CAP_NEEDS_POLL;
-        }
+		}
 		mmc_detect_change(host->mmc, 0);
 	} else {
 		mmc->caps &= ~MMC_CAP_NEEDS_POLL;
@@ -1365,7 +1365,7 @@ set_polling(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 void bcm_wlan_power_on(int enable)
 {
 	int ret = 0;
@@ -1450,7 +1450,7 @@ static struct attribute_group dev_attr_grp = {
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 #ifndef CONFIG_HUAWEI_WIFI_SDCC
 static void msmsdcc_early_suspend(struct early_suspend *h)
 {
@@ -1673,7 +1673,6 @@ msmsdcc_probe(struct platform_device *pdev)
 	else
 	 	ret = request_irq(irqres->start, msmsdcc_pio_irq, IRQF_SHARED,
 				  DRIVER_NAME " (pio)", host);
-		
 	if (ret)
 		goto irq_free;
 
@@ -1722,7 +1721,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc_add_host(mmc);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 #ifndef CONFIG_HUAWEI_WIFI_SDCC
 	host->early_suspend.suspend = msmsdcc_early_suspend;
 	host->early_suspend.resume  = msmsdcc_late_resume;
@@ -1847,7 +1846,7 @@ static int msmsdcc_remove(struct platform_device *pdev)
 	mmc_free_host(mmc);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 #ifndef CONFIG_HUAWEI_WIFI_SDCC
 	unregister_early_suspend(&host->early_suspend);
 #endif
@@ -1975,9 +1974,9 @@ static int __init msmsdcc_init(void)
 		return ret;
 	}
 #endif
-#ifndef HUAWEI_BCM4329
+#ifndef CONFIG_HUAWEI_BCM4329
 	wifi_chip_is_bcm = board_support_bcm_wifi(NULL);
-    printk(KERN_ERR"%s: now wifi_chip_is_bcm is set to %d\n", __func__, wifi_chip_is_bcm);
+	printk(KERN_ERR"%s: now wifi_chip_is_bcm is set to %d\n", __func__, wifi_chip_is_bcm);
 #endif
 
 	return platform_driver_register(&msmsdcc_driver);

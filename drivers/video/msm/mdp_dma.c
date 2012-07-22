@@ -72,23 +72,22 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 	    (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 	uint32 ystride = mfd->fbi->fix.line_length;
 #ifdef CONFIG_HUAWEI_KERNEL
-    lcd_align_type lcd_align = LCD_PANEL_ALIGN_LSB;
+	lcd_align_type lcd_align = LCD_PANEL_ALIGN_LSB;
+	lcd_align =  lcd_align_probe();
 
-    lcd_align =  lcd_align_probe();       
-
-    if (lcd_align == LCD_PANEL_ALIGN_MSB)
-    {
-         dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_MSB |
-         DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
-    }
-    else
-    {
-         dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_LSB |
-         DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
-    }
+	if (lcd_align == LCD_PANEL_ALIGN_MSB)
+	{
+		dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_MSB |
+		DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
+	}
+	else
+	{
+		dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_LSB |
+		DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
+	}
 #else
-    dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_LSB |
-    DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
+	dma2_cfg_reg = DMA_PACK_TIGHT | DMA_PACK_ALIGN_LSB |
+	    DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;
 #endif
 
 #ifdef CONFIG_FB_MSM_MDP30

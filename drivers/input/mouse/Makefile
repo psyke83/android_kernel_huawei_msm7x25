@@ -20,7 +20,6 @@ obj-$(CONFIG_MOUSE_SERIAL)		+= sermouse.o
 obj-$(CONFIG_MOUSE_SYNAPTICS_I2C)	+= synaptics_i2c.o
 obj-$(CONFIG_MOUSE_VSXXXAA)		+= vsxxxaa.o
 
-
 obj-$(CONFIG_MOUSE_OFN_AVAGO_A320)      += ofn_avago_a320.o
 psmouse-objs := psmouse-base.o synaptics.o
 

@@ -126,8 +126,8 @@ struct msm_fb_panel_data {
 	void (*set_vsync_notifier) (msm_fb_vsync_handler_type, void *arg);
 	void (*set_backlight) (struct msm_fb_data_type *);
 #ifdef CONFIG_HUAWEI_KERNEL
-    void (*set_contrast) (struct msm_fb_data_type *, unsigned int contrast);
-#endif    
+	void (*set_contrast) (struct msm_fb_data_type *, unsigned int contrast);
+#endif
 	/* function entry chain */
 	int (*on) (struct platform_device *pdev);
 	int (*off) (struct platform_device *pdev);

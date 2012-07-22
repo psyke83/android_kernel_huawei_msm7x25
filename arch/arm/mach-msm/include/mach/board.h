@@ -283,7 +283,6 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *);
 struct mmc_platform_data;
 int __init msm_add_sdcc(unsigned int controller,
 		struct mmc_platform_data *plat);
-int __init rmt_storage_add_ramfs(void);
 
 struct msm_usb_host_platform_data;
 int __init msm_add_host(unsigned int host,
@@ -313,8 +312,8 @@ int __init parse_tag_lcd_id(const struct tag *tags);
 
 int __init parse_tag_ts_id(const struct tag *tags);
 int __init parse_tag_sub_board_id(const struct tag *tags);
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_KERNEL
 int __init parse_tag_boot_mode_id(const struct tag *tags);
-#endif  /* CONFIG_USB_AUTO_INSTALL */
+#endif  /* CONFIG_HUAWEI_KERNEL */
     
 #endif

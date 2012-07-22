@@ -1,6 +1,5 @@
 config FUSE_FS
-	bool "FUSE (Filesystem in Userspace) support"
-	default y
+	tristate "FUSE (Filesystem in Userspace) support"
 	help
 	  With FUSE it is possible to implement a fully functional filesystem
 	  in a userspace program.

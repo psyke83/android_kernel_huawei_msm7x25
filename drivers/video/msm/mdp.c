@@ -905,7 +905,7 @@ static int mdp_probe(struct platform_device *pdev)
 #if 0
 		mdp_hw_init();
 #else
-        mdp_init_scale_table();
+		mdp_init_scale_table();
 #endif
 #endif
 

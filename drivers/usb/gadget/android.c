@@ -62,7 +62,7 @@
 #include "epautoconf.c"
 #include "composite.c"
 
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 #include "usb_switch_huawei.h"
 
 static struct delayed_work android_usb_switch_work;
@@ -76,7 +76,7 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
 
 /* product id */
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 static u16 product_id =PID_NORMAL; 
 #else
 static u16 product_id = 0x9018;
@@ -104,7 +104,9 @@ static const char longname[] = "Gadget Android";
 static u8 hostaddr[ETH_ALEN];
 #endif
 
+#ifdef CONFIG_USB_AUTO_INSTALL
 extern usb_switch_stru usb_switch_para;
+#endif
 
 /* Default vendor ID, overridden by platform data */
 #define VENDOR_ID		0x18D1
@@ -224,7 +226,7 @@ static int  android_bind_config(struct usb_configuration *c)
 			break;
 		case ANDROID_MSC:
 #ifdef CONFIG_USB_AUTO_INSTALL
-            USB_PR("%s, dev->nluns=%d\n", __func__, dev->nluns);
+			USB_PR("%s, dev->nluns=%d\n", __func__, dev->nluns);
 #endif 
 			ret = mass_storage_function_add(dev->cdev, c,
 								dev->nluns);
@@ -295,6 +297,12 @@ static int  android_bind_config(struct usb_configuration *c)
 
 static int is_usb_networking_on(void)
 {
+	/* Android user space allows USB tethering only when usb0 is listed
+	 * in network interfaces. Setup network link though RNDIS/CDC-ECM
+	 * is not listed in current composition. Network links is not setup
+	 * for every composition switch. It is setup one time and teared down
+	 * during module removal.
+	 */
 #if defined(CONFIG_USB_ANDROID_CDC_ECM) || defined(CONFIG_USB_ANDROID_RNDIS)
 	return 1;
 #else
@@ -387,15 +395,15 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	if (id < 0)
 		return id;
 	strings_dev[STRING_SERIAL_IDX].id = id;
-#ifdef CONFIG_USB_AUTO_INSTALL
-    if(0 == usb_sn_valid)
-    {
-	    device_desc.iSerialNumber = 0;
-    }
-    else
-    {
-	    device_desc.iSerialNumber = id;
-    }
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
+	if(0 == usb_sn_valid)
+	{
+		device_desc.iSerialNumber = 0;
+	}
+	else
+	{
+		device_desc.iSerialNumber = id;
+	}
 #else
 	device_desc.iSerialNumber = id;
 #endif  
@@ -457,9 +465,9 @@ static int  android_bind(struct usb_composite_dev *cdev)
 	}
 
 	if (is_iad_enabled()) {
-        device_desc.bDeviceClass = USB_CLASS_COMM;
-        device_desc.bDeviceSubClass      = 0;
-        device_desc.bDeviceProtocol      = 0;
+		device_desc.bDeviceClass = USB_CLASS_COMM;
+		device_desc.bDeviceSubClass      = 0;
+		device_desc.bDeviceProtocol      = 0;
 	} else {
 		device_desc.bDeviceClass         = USB_CLASS_PER_INTERFACE;
 		device_desc.bDeviceSubClass      = 0;
@@ -503,16 +511,18 @@ static int android_switch_composition(u16 pid)
 	struct usb_composition *func;
 	int ret;
 
-#ifdef CONFIG_USB_AUTO_INSTALL
-    u16 old_pid = product_id;
-    USB_PR("%s\n", __func__);
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
+	u16 old_pid = product_id;
+	USB_PR("%s\n", __func__);
 #endif  
-    
+
 	/* Validate the prodcut id */
 	func = android_validate_product_id(pid);
 	if (!func) {
 		pr_err("%s: invalid product id %x\n", __func__, pid);
+#ifdef CONFIG_USB_AUTO_INSTALL
 		usb_switch_para.inprogress = 0;
+#endif
 		return -EINVAL;
 	}
 
@@ -540,7 +550,9 @@ static int android_switch_composition(u16 pid)
     
 	usb_composite_unregister(&android_usb_driver);
 	ret = usb_composite_register(&android_usb_driver);
+#ifdef CONFIG_USB_AUTO_INSTALL
 	usb_switch_para.inprogress = 0;
+#endif
 	return ret;
 }
 
@@ -633,19 +645,19 @@ static int adb_enable_open(struct inode *ip, struct file *fp)
 	dev->adb_enabled = 1;
 	pr_debug("enabling adb\n");
 #ifdef CONFIG_USB_AUTO_INSTALL
-    if((product_id != curr_usb_pid_ptr->wlan_pid)  
-        && ((GOOGLE_INDEX == usb_para_info.usb_pid_index)
-            ||(product_id == curr_usb_pid_ptr->norm_pid)  
-            ||(product_id == curr_usb_pid_ptr->auth_pid))
-       )
-    {
-        USB_PR("%s permitted, product_id = 0x%x\n", __func__, product_id);
+	if((product_id != curr_usb_pid_ptr->wlan_pid)  
+		&& ((GOOGLE_INDEX == usb_para_info.usb_pid_index)
+			||(product_id == curr_usb_pid_ptr->norm_pid)  
+			||(product_id == curr_usb_pid_ptr->auth_pid))
+		)
+	{
+		USB_PR("%s permitted, product_id = 0x%x\n", __func__, product_id);
 		ret = android_switch_composition(product_id);
-    }
-    else
-    {
-        USB_PR("%s disallowed, product_id = 0x%x\n", __func__, product_id);
-    }
+	}
+	else
+	{
+		USB_PR("%s disallowed, product_id = 0x%x\n", __func__, product_id);
+	}
 #else
 	if (product_id)
 		ret = android_switch_composition(product_id);
@@ -668,21 +680,21 @@ static int adb_enable_release(struct inode *ip, struct file *fp)
 
 	pr_debug("disabling adb\n");
 	dev->adb_enabled = 0;
-    
+
 #ifdef CONFIG_USB_AUTO_INSTALL
-    if((product_id != curr_usb_pid_ptr->wlan_pid)  
-        && ((GOOGLE_INDEX == usb_para_info.usb_pid_index)
-            ||(product_id == curr_usb_pid_ptr->norm_pid)  
-            ||(product_id == curr_usb_pid_ptr->auth_pid))
-       )
-    {
-        USB_PR("%s permitted, product_id = 0x%x\n", __func__, product_id);
+	if((product_id != curr_usb_pid_ptr->wlan_pid)  
+		&& ((GOOGLE_INDEX == usb_para_info.usb_pid_index)
+			||(product_id == curr_usb_pid_ptr->norm_pid)  
+			||(product_id == curr_usb_pid_ptr->auth_pid))
+		)
+	{
+		USB_PR("%s permitted, product_id = 0x%x\n", __func__, product_id);
 		ret = android_switch_composition(product_id);
-    }
-    else
-    {
-        USB_PR("%s disallowed, product_id = 0x%x\n", __func__, product_id);
-    }
+	}
+	else
+	{
+		USB_PR("%s disallowed, product_id = 0x%x\n", __func__, product_id);
+	}
 #else
 	if (product_id)
 		ret = android_switch_composition(product_id);
@@ -692,56 +704,58 @@ out:
 
 	return ret;
 }
-#ifdef CONFIG_USB_AUTO_INSTALL
+#ifdef CONFIG_HUAWEI_USB_FUNCTION
 void unprobe_usb_composition(void)
 {
-  USB_PR("%s begin\n", __func__);
-  usb_composite_unregister(&android_usb_driver); 
-  USB_PR("%s success\n", __func__);
+	USB_PR("%s begin\n", __func__);
+	usb_composite_unregister(&android_usb_driver); 
+	USB_PR("%s success\n", __func__);
 }
 EXPORT_SYMBOL(unprobe_usb_composition);
 
 u16 android_get_product_id(void)
 {
-    return product_id;
+	return product_id;
 }
 
 void android_set_product_id(u16 pid)
 {
-    product_id = pid;
+	product_id = pid;
 }
 
 void set_usb_sn(char *sn_ptr)
 {
-    int len = 0;
+	int len = 0;
 
-    if(sn_ptr == NULL)
-    {
-        usb_sn_valid = 0;
-    }
-    else
-    {
-        len = strlen(sn_ptr);
-    	if (len >= MAX_SERIAL_LEN) 
-        {
-            USB_PR("serial number string too long\n");
-    		return;
-    	}
-    	strncpy(serial_number, sn_ptr, len);
-    	serial_number[len] = '\0';
-        usb_sn_valid = 1;
-    }
+	if(sn_ptr == NULL)
+	{
+		usb_sn_valid = 0;
+	}
+	else
+	{
+	len = strlen(sn_ptr);
+		if (len >= MAX_SERIAL_LEN) 
+		{
+			USB_PR("serial number string too long\n");
+			return;
+		}
+		strncpy(serial_number, sn_ptr, len);
+		serial_number[len] = '\0';
+		usb_sn_valid = 1;
+	}
 }
+#endif
 
+#ifdef CONFIG_USB_AUTO_INSTALL
 static void android_usb_switch_func(struct work_struct *w)
 {
-    USB_PR("%s\n", __func__);
-    
-    if (!_android_dev) 
-    {
-        USB_PR("_android_dev is NULL.\n");
+	USB_PR("%s\n", __func__);
+
+	if (!_android_dev) 
+	{
+		USB_PR("_android_dev is NULL.\n");
 		usb_switch_para.inprogress = 0;
-    	return;
+		return;
 	}
 
 	mutex_lock(&_android_dev->lock);
@@ -752,45 +766,44 @@ static void android_usb_switch_func(struct work_struct *w)
 
 void android_delay_work_init(int add_flag)
 {
-    static int delay_work_init_flag = 0;
+	static int delay_work_init_flag = 0;
 
-    if(1 == add_flag)
-    {
-        if(0 == delay_work_init_flag)
-        {
-            USB_PR("%s, initialize OK.\n", __func__);
-            delay_work_init_flag = 1;
-            INIT_DELAYED_WORK(&android_usb_switch_work, android_usb_switch_func);
-        }
-        else
-        {
-            USB_PR("%s, already initialized.\n", __func__);
-        }
-    }
-    else
-    {
-        if(1 == delay_work_init_flag)
-        {
-            USB_PR("%s, cancel OK.\n", __func__);
-            delay_work_init_flag = 0;
-        	cancel_delayed_work_sync(&android_usb_switch_work);
-        }
-        else
-        {
-            USB_PR("%s, already cancelled.\n", __func__);
-        }
-    }
+	if(1 == add_flag)
+	{
+		if(0 == delay_work_init_flag)
+		{
+			USB_PR("%s, initialize OK.\n", __func__);
+			delay_work_init_flag = 1;
+			INIT_DELAYED_WORK(&android_usb_switch_work, android_usb_switch_func);
+		}
+		else
+		{
+			USB_PR("%s, already initialized.\n", __func__);
+		}
+	}
+	else
+	{
+		if(1 == delay_work_init_flag)
+		{
+			USB_PR("%s, cancel OK.\n", __func__);
+			delay_work_init_flag = 0;
+			cancel_delayed_work_sync(&android_usb_switch_work);
+		}
+		else
+		{
+			USB_PR("%s, already cancelled.\n", __func__);
+		}
+	}
 }
-
 
 int usb_switch_composition(u16 pid, unsigned long delay_tick)
 {
 	int ret = 0;
-    
-    USB_PR("%s, pid=0x%x\n", __func__, pid);
-    
-    usb_switch_dest_pid = pid;
-    
+
+	USB_PR("%s, pid=0x%x\n", __func__, pid);
+
+	usb_switch_dest_pid = pid;
+
 	schedule_delayed_work(&android_usb_switch_work, delay_tick);
 
 	return ret;
@@ -798,10 +811,10 @@ int usb_switch_composition(u16 pid, unsigned long delay_tick)
 
 void kernel_set_adb_enable(u8 enable)
 {
-    struct android_dev *dev = _android_dev;
-    dev->adb_enabled = enable;
+	struct android_dev *dev = _android_dev;
+	dev->adb_enabled = enable;
 }
-#endif  
+#endif
 
 static struct file_operations adb_enable_fops = {
 	.owner =   THIS_MODULE,
@@ -838,18 +851,18 @@ static int __init android_probe(struct platform_device *pdev)
 	dev->nluns = pdata->nluns;
 	dev->pdata = pdata;
 #ifdef CONFIG_USB_AUTO_INSTALL
-    if ((0 == memcmp(usb_para_data.vender_para.vender_name, VENDOR_EMOBILE, strlen(VENDOR_EMOBILE)))
-      && (0 == memcmp(usb_para_data.vender_para.country_name, COUNTRY_JAPAN, strlen(COUNTRY_JAPAN))))
-    {
-      is_japan_emboile = 1;
-    }
-    
-    if((GOOGLE_INDEX == usb_para_info.usb_pid_index) && !is_japan_emboile)
-    {
-        dev->nluns = 2;
-        USB_PR("Add CDROM to LIGHTNING. nluns=%d\n", dev->nluns);
-    }
-#endif  
+	if ((0 == memcmp(usb_para_data.vender_para.vender_name, VENDOR_EMOBILE, strlen(VENDOR_EMOBILE)))
+		&& (0 == memcmp(usb_para_data.vender_para.country_name, COUNTRY_JAPAN, strlen(COUNTRY_JAPAN))))
+	{
+		is_japan_emboile = 1;
+	}
+
+	if((GOOGLE_INDEX == usb_para_info.usb_pid_index) && !is_japan_emboile)
+	{
+		dev->nluns = 2;
+		USB_PR("Add CDROM to LIGHTNING. nluns=%d\n", dev->nluns);
+	}
+#endif
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &android_attr_grp);
 	if (ret < 0) {

@@ -90,13 +90,10 @@ obj-$(CONFIG_MSM_DMA_TEST) += dma_test.o
 
 #add by mzh
 obj-$(CONFIG_HUAWEI_BATTERY) += huawei_battery.o 
-
 obj-$(CONFIG_HUAWEI_U8220_KEYBOARD) += keypad_linux_u8220.o
 #obj-$(CONFIG_HUAWEI_U8220_JOGBALL) +=jogball_device.o 
 obj-$(CONFIG_HUAWEI_JOGBALL) +=jogball_device.o 
-
 obj-$(CONFIG_HUAWEI_MSM_VIBRATOR) += msm_vibrator.o huawei_serial_server.o kernel_msm_msg.o
-
 #/*add code to support JOY(U8120) */
 obj-$(CONFIG_HUAWEI_FEATURE_OFN_KEY) += msm_ofn_key.o
 
@@ -147,9 +144,7 @@ obj-$(CONFIG_MSM_NPA_REMOTE_ONCRPC) += npa_remote_rpc_client.o
 obj-$(CONFIG_ARCH_MSM7X30) += spm.o
 
 obj-$(CONFIG_HUAWEI_KEY_TEST) += huawei_key_test.o
-
 obj-$(CONFIG_HUAWEI_RGB_KEY_LIGHT) += RGB_led.o
-
 obj-$(CONFIG_HUAWEI_SMEM_SLEEP_LOG) += smem_sleep_log.o
 
 obj-$(CONFIG_SMMU)		+= smmu_driver.o smmu_driver_enum.o

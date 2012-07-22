@@ -62,33 +62,32 @@ extern uint32 mdp_intr_mask;
 int first_pixel_start_x;
 int first_pixel_start_y;
 
-int   lcdc_polarity_set(void)
+int lcdc_polarity_set(void)
 {
-    int hsync_polarity;
-    int vsync_polarity;
-    int data_en_polarity;
-    int ctrl_polarity;
+	int hsync_polarity;
+	int vsync_polarity;
+	int data_en_polarity;
+	int ctrl_polarity;
 
-    lcd_panel_type  hw_lcd_panel = LCD_NONE;
+	lcd_panel_type  hw_lcd_panel = LCD_NONE;
 
-    hw_lcd_panel = lcd_panel_probe();
-     
-    if(hw_lcd_panel == LCD_S6D74A0_SAMSUNG_HVGA)     
-    {               
-        hsync_polarity = 1;
-        vsync_polarity =  1;
+	hw_lcd_panel = lcd_panel_probe();
 
-    }
-    else
-    {
-       hsync_polarity = 0;
-       vsync_polarity =  0;
-    }
-    data_en_polarity = 0;
-    ctrl_polarity =
-	    (data_en_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
-   
-    return ctrl_polarity;
+	if(hw_lcd_panel == LCD_S6D74A0_SAMSUNG_HVGA)     
+	{
+		hsync_polarity = 1;
+		vsync_polarity =  1;
+	}
+	else
+	{
+		hsync_polarity = 0;
+		vsync_polarity =  0;
+	}
+	data_en_polarity = 0;
+	ctrl_polarity =
+		(data_en_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
+
+	return ctrl_polarity;
 
 }
 
@@ -136,7 +135,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	int ret;
 
 #ifdef CONFIG_HUAWEI_KERNEL
-    lcd_align_type lcd_align = LCD_PANEL_ALIGN_LSB;
+	lcd_align_type lcd_align = LCD_PANEL_ALIGN_LSB;
 #endif
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
@@ -157,18 +156,18 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	buf += fbi->var.xoffset * bpp + fbi->var.yoffset * fbi->fix.line_length;
 
 #ifdef CONFIG_HUAWEI_KERNEL
-    lcd_align = lcd_align_probe();
-    
-    if(lcd_align == LCD_PANEL_ALIGN_MSB)
-    {
-          dma2_cfg_reg = DMA_PACK_ALIGN_MSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
-    }
-    else
-    {
-         dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
-    }
+	lcd_align = lcd_align_probe();
+
+	if(lcd_align == LCD_PANEL_ALIGN_MSB)
+	{
+	dma2_cfg_reg = DMA_PACK_ALIGN_MSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+	}
+	else
+	{
+	dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+	}
 #else
-    dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
+	dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
 #endif
 
 	if (mfd->fb_imgType == MDP_BGR_565)
@@ -278,6 +277,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		active_v_start = 0;
 		active_v_end = 0;
 	}
+
 
 #ifdef CONFIG_FB_MSM_MDP40
 	if (mfd->panel.type == HDMI_PANEL) {
