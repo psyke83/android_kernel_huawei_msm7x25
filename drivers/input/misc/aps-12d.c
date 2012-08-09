@@ -57,9 +57,15 @@ struct aps_data {
 	struct input_dev *input_dev;
 	struct mutex  mlock;
 	struct hrtimer timer;
-	struct work_struct  work;	
+	struct work_struct  work;
+	struct early_suspend early_suspend;
 	int (*power)(int on);
 };
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void aps_12d_early_suspend(struct early_suspend *h);
+static void aps_12d_early_resume(struct early_suspend *h);
+#endif
 
 static struct aps_data  *this_aps_data;
 
@@ -740,10 +746,17 @@ static int aps_12d_probe(
 	
 	this_aps_data =aps;
 
-    #ifdef CONFIG_HUAWEI_HW_DEV_DCT
-    /* detect current device successful, set the flag as present */
-    set_hw_dev_flag(DEV_I2C_APS);
-    #endif
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	aps->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	aps->early_suspend.suspend = aps_12d_early_suspend;
+	aps->early_suspend.resume = aps_12d_early_resume;
+	register_early_suspend(&aps->early_suspend);
+#endif
+
+	#ifdef CONFIG_HUAWEI_HW_DEV_DCT
+	/* detect current device successful, set the flag as present */
+	set_hw_dev_flag(DEV_I2C_APS);
+	#endif
 
 	printk(KERN_INFO "aps_12d_probe: Start Proximity Sensor APS-12D\n");
 
@@ -777,6 +790,10 @@ static int aps_12d_remove(struct i2c_client *client)
 	PROXIMITY_DEBUG("aps_12d_remove enter\n ");
 
 	hrtimer_cancel(&aps->timer);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&aps->early_suspend);
+#endif
 
 	misc_deregister(&light_device);
 	misc_deregister(&proximity_device);
@@ -827,6 +844,24 @@ static int aps_12d_resume(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void aps_12d_early_suspend(struct early_suspend *h)
+{
+	struct aps_data *aps ;
+	aps = container_of(h, struct aps_data, early_suspend);
+	
+	aps_12d_suspend(aps->client, PMSG_SUSPEND);
+}
+
+static void aps_12d_early_resume(struct early_suspend *h)
+{	
+	struct aps_data *aps ;
+	aps = container_of(h, struct aps_data, early_suspend);
+	
+	aps_12d_resume(aps->client);
+}
+#endif
+
 static const struct i2c_device_id aps_id[] = {
 	{ "aps-12d", 0 },
 	{ }
@@ -835,8 +870,10 @@ static const struct i2c_device_id aps_id[] = {
 static struct i2c_driver aps_driver = {
 	.probe		= aps_12d_probe,
 	.remove		= aps_12d_remove,
+#ifndef CONFIG_HAS_EARLYSUSPEND
 	.suspend	= aps_12d_suspend,
 	.resume		= aps_12d_resume,
+#endif
 	.id_table	= aps_id,
 	.driver = {
 		.name	="aps-12d",
